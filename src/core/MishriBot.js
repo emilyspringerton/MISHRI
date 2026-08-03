@@ -3,6 +3,7 @@
  * "Not a noisy machine. A creature that hesitates, breathes, and forgets."
  */
 
+const path = require('path');
 const mineflayer = require('mineflayer');
 const pathfinder = require('mineflayer-pathfinder');
 const autoEat = require('mineflayer-auto-eat');
@@ -10,14 +11,17 @@ const collectBlock = require('mineflayer-collectblock');
 const pvp = require('mineflayer-pvp');
 const toolPlugin = require('mineflayer-tool');
 
-const config = require('../config/default.json');
+// Resolve paths relative to this file's directory
+// This file is at src/core/MishriBot.js, project root is 2 levels up
+const _thisDir = __dirname;
+const config = require(path.resolve(_thisDir, '..', '..', 'config', 'default.json'));
 const SkinManager = require('./SkinManager');
-const HumannessLayer = require('../humanness');
-const MovementManager = require('../movement');
-const PerceptionManager = require('../perception');
-const SocialManager = require('../social');
-const BehaviorOrchestrator = require('../behavior');
-const SkillManager = require('../skills');
+const HumannessLayer = require(path.resolve(_thisDir, '..', 'humanness', 'HumannessLayer.js'));
+const MovementManager = require(path.resolve(_thisDir, '..', 'movement', 'MovementManager.js'));
+const PerceptionManager = require(path.resolve(_thisDir, '..', 'perception', 'PerceptionManager.js'));
+const SocialManager = require(path.resolve(_thisDir, '..', 'social', 'SocialManager.js'));
+const BehaviorOrchestrator = require(path.resolve(_thisDir, '..', 'behavior', 'BehaviorOrchestrator.js'));
+const SkillManager = require(path.resolve(_thisDir, '..', 'skills', 'SkillManager.js'));
 
 class MishriBot {
   constructor(overrides = {}) {
