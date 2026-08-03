@@ -86,10 +86,10 @@ class MishriBot {
 
     // Load plugins
     this.bot.loadPlugin(pathfinder.pathfinder);
-    this.bot.loadPlugin(autoEat.plugin);
+    this.bot.loadPlugin(autoEat.loader);
     this.bot.loadPlugin(collectBlock.plugin);
     this.bot.loadPlugin(pvp.plugin);
-    this.bot.loadPlugin(toolPlugin);
+    this.bot.loadPlugin(toolPlugin.plugin);
 
     // Initialize sub-systems
     this.movement = new MovementManager(this.bot, this.humanness);
