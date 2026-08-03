@@ -2,36 +2,60 @@
   "server": {
     "host": "localhost",
     "port": 25565,
-    "version": "1.20.4"
+    "version": "26.2"
   },
   "bot": {
     "username": "Mishri",
     "password": "",
     "auth": "offline"
   },
+  "skin": {
+    "enabled": true,
+    "url": "https://textures.minecraft.net/texture/ae0966c89e22d45a1f132d6f9a16dba0d59e6e7733f8e4a5c2a1c2",
+    "model": "classic",
+    "fallbackUrl": ""
+  },
   "humanness": {
-    "reactionDelayMin": 150,
-    "reactionDelayMax": 800,
-    "chatDelayMin": 2000,
-    "chatDelayMax": 8000,
-    "typoChance": 0.12,
-    "ignoreChatChance": 0.3,
-    "lookWanderIntervalMin": 3000,
-    "lookWanderIntervalMax": 12000,
-    "afkChance": 0.05,
-    "afkDurationMin": 10000,
-    "afkDurationMax": 120000,
-    "microStopChance": 0.03,
-    "imperfectAim": 0.85,
-    "maxAPM": 90
+    "reactionDelayMin": 200,
+    "reactionDelayMax": 1200,
+    "chatDelayMin": 2500,
+    "chatDelayMax": 10000,
+    "typoChance": 0.15,
+    "typoCorrectChance": 0.6,
+    "ignoreChatChance": 0.35,
+    "lookWanderIntervalMin": 2000,
+    "lookWanderIntervalMax": 10000,
+    "afkChance": 0.06,
+    "afkDurationMin": 15000,
+    "afkDurationMax": 180000,
+    "microStopChance": 0.05,
+    "imperfectAim": 0.82,
+    "maxAPM": 80,
+    "lookAheadChance": 0.7,
+    "stretchChance": 0.02,
+    "yawnChance": 0.01,
+    "hotbarScrollChance": 0.08,
+    "sneakPeekChance": 0.04,
+    "breathingAmplitude": 0.003,
+    "headBobWhileWalking": true,
+    "nervousLookAroundChance": 0.03,
+    "doubleTakeChance": 0.02,
+    "stareAtPlayerChance": 0.15,
+    "walkSpeedVariation": 0.15,
+    "turnSpeedVariation": 0.2,
+    "fidgetWithItemChance": 0.06,
+    "openCloseInventoryChance": 0.04
   },
   "personality": {
     "style": "casual",
-    "greetings": ["hey", "hi", "yo", "sup", "hello"],
-    "farewells": ["cya", "later", "bye", "gg"],
+    "greetings": ["hey", "hi", "yo", "sup", "hello", "heya", "hii", "whats good"],
+    "farewells": ["cya", "later", "bye", "gg", "peace", "im out", "gn"],
+    "acknowledgments": ["nice", "ok", "cool", "lol", "yeah", "true", "mhm", "fr", "no cap", "real"],
     "chatPrefix": "",
     "emojiUse": 0.2,
-    "sentenceLength": "short"
+    "sentenceLength": "short",
+    "mood": "neutral",
+    "talkativeness": 0.6
   },
   "activities": {
     "enableMining": true,
@@ -39,6 +63,8 @@
     "enableCombat": true,
     "enableSocializing": true,
     "enableWandering": true,
+    "enableFarming": true,
+    "enableTrading": false,
     "wanderRadius": 64,
     "sessionDurationMin": 1800000,
     "sessionDurationMax": 7200000

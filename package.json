@@ -7,7 +7,13 @@
     "start": "node src/core/MishriBot.js",
     "test": "node tests/humanness.test.js"
   },
-  "keywords": ["minecraft", "bot", "mineflayer", "human-like", "ai"],
+  "keywords": [
+    "minecraft",
+    "bot",
+    "mineflayer",
+    "human-like",
+    "ai"
+  ],
   "author": "arpitrajjj",
   "license": "ISC",
   "type": "commonjs",

@@ -1,6 +1,6 @@
 /**
  * Mishri — Human-like Minecraft Bot
- * Main entry point
+ * "Not a noisy machine. A creature that hesitates, breathes, and forgets."
  */
 
 const mineflayer = require('mineflayer');
@@ -11,7 +11,8 @@ const pvp = require('mineflayer-pvp');
 const toolPlugin = require('mineflayer-tool');
 
 const config = require('../config/default.json');
-const HumannessLayer = require('./humanness');
+const SkinManager = require('./SkinManager');
+const HumannessLayer = require('../humanness');
 const MovementManager = require('../movement');
 const PerceptionManager = require('../perception');
 const SocialManager = require('../social');
@@ -23,8 +24,10 @@ class MishriBot {
     this.config = { ...config, ...overrides };
     this.bot = null;
     this.running = false;
+    this.startTime = null;
 
     // Sub-systems
+    this.skin = new SkinManager(this.config.skin);
     this.humanness = new HumannessLayer(this.config.humanness);
     this.movement = null;
     this.perception = null;
@@ -37,9 +40,9 @@ class MishriBot {
    * Connect to the Minecraft server
    */
   connect() {
-    console.log(`[Mishri] Connecting as ${this.config.bot.username}...`);
+    console.log(`[Mishri] Connecting as ${this.config.bot.username} to ${this.config.server.host}:${this.config.server.port} (v${this.config.server.version})`);
 
-    this.bot = mineflayer.createBot({
+    const botOptions = {
       host: this.config.server.host,
       port: this.config.server.port,
       username: this.config.bot.username,
@@ -47,7 +50,19 @@ class MishriBot {
       auth: this.config.bot.auth,
       version: this.config.server.version,
       hideErrors: false,
-    });
+    };
+
+    // Inject skin profile properties
+    const skinProps = this.skin.getProfileProperties();
+    if (skinProps) {
+      botOptions.profileProperties = skinProps;
+      console.log('[Mishri] Custom skin will be applied');
+    }
+
+    this.bot = mineflayer.createBot(botOptions);
+
+    // Also inject skin via packet hook
+    this.skin.injectSkin(this.bot);
 
     // Load plugins
     this.bot.loadPlugin(pathfinder.pathfinder);
@@ -56,7 +71,7 @@ class MishriBot {
     this.bot.loadPlugin(pvp.plugin);
     this.bot.loadPlugin(toolPlugin);
 
-    // Initialize sub-systems with bot reference
+    // Initialize sub-systems
     this.movement = new MovementManager(this.bot, this.humanness);
     this.perception = new PerceptionManager(this.bot, this.humanness);
     this.social = new SocialManager(this.bot, this.humanness, this.config);
@@ -76,11 +91,13 @@ class MishriBot {
     this.bot.once('spawn', () => {
       console.log('[Mishri] Spawned in world!');
       this.running = true;
+      this.startTime = Date.now();
       this._onSpawn();
     });
 
     this.bot.on('chat', (username, message) => {
       if (username === this.bot.username) return;
+      this.humanness.onInterestingEvent();
       this.social.onChat(username, message);
     });
 
@@ -90,10 +107,29 @@ class MishriBot {
 
     this.bot.on('entityHurt', (entity) => {
       this.perception.onEntityHurt(entity);
+      // If WE got hurt, get startled
+      if (entity === this.bot.entity) {
+        this.humanness.getStartled();
+      }
     });
 
     this.bot.on('entitySwing', (entity) => {
       this.perception.onEntitySwing(entity);
+    });
+
+    this.bot.on('playerJoined', (player) => {
+      console.log(`[Mishri] ${player.username} joined`);
+      this.humanness.onInterestingEvent();
+      // Maybe greet them after a delay
+      if (Math.random() < 0.4) {
+        this.humanness.delay(3000, 8000).then(() => {
+          this.social.onChat(player.username, 'just joined');
+        });
+      }
+    });
+
+    this.bot.on('playerLeft', (player) => {
+      console.log(`[Mishri] ${player.username} left`);
     });
 
     this.bot.on('kicked', (reason) => {
@@ -113,26 +149,52 @@ class MishriBot {
     this.bot.on('death', () => {
       this._onDeath();
     });
+
+    // Periodic humanness behaviors
+    this.bot.on('physicsTick', () => {
+      if (Math.random() < 0.002) { // ~every 50 seconds
+        this._periodicHumanness();
+      }
+    });
   }
 
   /**
-   * Called when the bot spawns — start all systems
+   * Called when the bot spawns
    */
   async _onSpawn() {
-    // Greet with delay
     await this.humanness.delay(2000, 5000);
     this.social.maybeGreet();
 
-    // Start the behavior loop
     this.behavior.start();
-
-    // Start the perception look-around loop
     this.perception.startLookLoop();
-
-    // Start AFK simulation
     this.behavior.startAFKSimulator();
 
+    // Start the periodic state logger
+    this._startStateLogger();
+
     console.log('[Mishri] All systems online. Blending in...');
+  }
+
+  /**
+   * Periodic humanness behaviors — little things that make us look alive
+   */
+  async _periodicHumanness() {
+    if (!this.running || !this.bot.entity) return;
+
+    // Scroll hotbar aimlessly
+    await this.humanness.maybeScrollHotbar(this.bot);
+
+    // Sneak peek
+    await this.humanness.maybeSneakPeek(this.bot);
+
+    // Fidget with held item
+    await this.humanness.maybeFidgetItem(this.bot);
+
+    // Check inventory briefly
+    await this.humanness.maybeCheckInventory(this.bot);
+
+    // Nervous look around (in dark, after damage)
+    await this.humanness.nervousLookAround(this.bot);
   }
 
   /**
@@ -140,17 +202,40 @@ class MishriBot {
    */
   async _onDeath() {
     console.log('[Mishri] Died! Respawning...');
-    await this.humanness.delay(1000, 4000);
-    this.bot.chat('rip');
+    this.humanness.getStartled();
+    await this.humanness.delay(1500, 5000);
+
+    const deathMessages = ['rip', 'oof', 'bruh', 'that was dumb', 'lag', 'ouch'];
+    this.bot.chat(this.humanness.pick(deathMessages));
     await this.humanness.delay(500, 2000);
     this.bot.respawn();
   }
 
   /**
-   * Disconnect from server
+   * Log internal state periodically
    */
-  disconnect() {
+  _startStateLogger() {
+    setInterval(() => {
+      if (!this.running) return;
+      const state = this.humanness.getState();
+      const uptime = Math.round((Date.now() - this.startTime) / 60000);
+      console.log(`[Mishri] State: ${JSON.stringify(state)} | Uptime: ${uptime}m | Behavior: ${this.behavior.currentBehavior || 'none'}`);
+    }, 300000); // Every 5 minutes
+  }
+
+  /**
+   * Disconnect gracefully
+   */
+  async disconnect() {
     this.running = false;
+
+    // Say goodbye like a human
+    if (this.bot?.entity) {
+      const farewells = ['cya', 'gotta go', 'later', 'im out', 'bye'];
+      this.bot.chat(this.humanness.pick(farewells));
+      await this.humanness.delay(1000, 3000);
+    }
+
     this.behavior?.stop();
     this.perception?.stop();
     this.bot?.quit();
@@ -163,8 +248,8 @@ if (require.main === module) {
   const bot = new MishriBot();
   bot.connect();
 
-  process.on('SIGINT', () => {
-    bot.disconnect();
+  process.on('SIGINT', async () => {
+    await bot.disconnect();
     process.exit(0);
   });
 }

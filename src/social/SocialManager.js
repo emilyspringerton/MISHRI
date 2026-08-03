@@ -1,6 +1,7 @@
 /**
- * Social Manager — Chat like a real person
- * Typos, delays, ignoring messages, personality
+ * Social Manager — Chat like a REAL person
+ * Typos with adjacent-key mistakes, typing indicators,
+ * ignoring messages, personality moods, contextual responses
  */
 
 class SocialManager {
@@ -11,42 +12,51 @@ class SocialManager {
     this.llmConfig = config.llm;
     this.chatHistory = [];
     this.lastResponse = 0;
-    this.conversationalMemory = new Map(); // player -> [messages]
+    this.conversationalMemory = new Map();
+    this.recentTopics = [];
   }
 
   /**
    * Handle incoming chat
    */
   async onChat(username, message) {
-    // Store in history
     this.chatHistory.push({ username, message, time: Date.now() });
     if (this.chatHistory.length > 100) this.chatHistory.shift();
 
-    // Store in conversational memory
     if (!this.conversationalMemory.has(username)) {
       this.conversationalMemory.set(username, []);
     }
     this.conversationalMemory.get(username).push(message);
 
-    // Maybe ignore — humans don't respond to everything
-    if (Math.random() < this.h.config.ignoreChatChance) return;
+    // Skip if we just responded (humans don't reply to every message)
+    if (Date.now() - this.lastResponse < 5000) return;
 
-    // Detect if message is directed at us
+    // Maybe ignore entirely — humans don't respond to everything
+    const ignoreChance = this.h.config.ignoreChatChance || 0.35;
+    if (Math.random() < ignoreChance) return;
+
+    // Low social energy = less likely to engage
+    if (this.h.socialEnergy < 0.3 && Math.random() < 0.7) return;
+
+    // Detect direction
     const directed = this._isDirectedAtUs(username, message);
-    if (!directed && Math.random() < 0.7) return; // 70% chance to ignore undirected
+    if (!directed && Math.random() < 0.75) return; // 75% ignore undirected
 
     // React with human-like delay
     await this.h.chatDelay();
+    this.h.onSocialInteraction();
 
     if (directed) {
       await this._respondToDirected(username, message);
     } else {
       await this._reactToGeneral(username, message);
     }
+
+    this.lastResponse = Date.now();
   }
 
   /**
-   * Check if a message seems directed at Mishri
+   * Check if message is directed at Mishri
    */
   _isDirectedAtUs(username, message) {
     const lower = message.toLowerCase();
@@ -54,13 +64,10 @@ class SocialManager {
     return (
       lower.includes(name) ||
       lower.includes('@' + name) ||
-      lower.endsWith('?') && this._isNearby(username)
+      (lower.endsWith('?') && this._isNearby(username) && Math.random() < 0.5)
     );
   }
 
-  /**
-   * Check if a player is nearby
-   */
   _isNearby(username) {
     const player = this.bot.players[username];
     if (!player?.entity) return false;
@@ -68,33 +75,60 @@ class SocialManager {
   }
 
   /**
-   * Respond to a directed message
+   * Respond to directed message
    */
   async _respondToDirected(username, message) {
     const lower = message.toLowerCase();
 
-    // Greeting detection
-    if (/^(hey|hi|yo|sup|hello|hola)/i.test(lower)) {
+    // Greeting
+    if (/^(hey|hi|yo|sup|hello|hola|heya|hii)\b/i.test(lower)) {
       const greeting = this.h.pick(this.personality.greetings);
       await this._sendChat(`${greeting} ${username}`);
       return;
     }
 
-    // Farewell detection
-    if (/\b(bye|cya|later|gg|goodnight|gn)\b/i.test(lower)) {
+    // How are you
+    if (/how\s*(are|r)\s*(u|you)|how'?s?\s*it\s*going|what'?s?\s*up/i.test(lower)) {
+      const responses = [
+        'good wbu', 'not bad', 'chilling', 'tired ngl', 'im good hbu',
+        'surviving lol', 'could be worse', 'just vibing'
+      ];
+      await this._sendChat(this.h.pick(responses));
+      return;
+    }
+
+    // Farewell
+    if (/\b(bye|cya|later|gg|goodnight|gn|peace|im\s*out)\b/i.test(lower)) {
       const farewell = this.h.pick(this.personality.farewells);
       await this._sendChat(farewell);
       return;
     }
 
-    // Question detection
+    // What are you doing
+    if (/what\s*(are|r)\s*(u|you)\s*doing|wyd|what'?s?\s*up/i.test(lower)) {
+      const doing = [
+        'just mining', 'wandering around', 'building stuff', 'not much tbh',
+        'looking for diamonds', 'exploring', 'chilling at base', 'grinding'
+      ];
+      await this._sendChat(this.h.pick(doing));
+      return;
+    }
+
+    // Question
     if (lower.includes('?')) {
       await this._answerQuestion(username, message);
       return;
     }
 
+    // Compliment
+    if (/\b(nice|cool|awesome|gg|good\s*job|well\s*done)\b/i.test(lower)) {
+      const thanks = ['ty', 'thanks', 'thx', 'appreciate it', 'no cap'];
+      await this._sendChat(this.h.pick(thanks));
+      return;
+    }
+
     // Generic acknowledgment
-    const acks = ['nice', 'ok', 'cool', 'lol', 'yeah', 'true', 'mhm', 'wdym'];
+    const acks = this.personality.acknowledgments || ['nice', 'ok', 'cool', 'lol', 'yeah'];
     await this._sendChat(this.h.pick(acks));
   }
 
@@ -104,26 +138,33 @@ class SocialManager {
   async _reactToGeneral(username, message) {
     const lower = message.toLowerCase();
 
-    // React to deaths, achievements, etc.
-    if (lower.includes('died') || lower.includes('rip')) {
+    if (/\b(died|rip|dead|killed|lost\s*everything)\b/i.test(lower)) {
       await this._sendChat('F');
       return;
     }
 
-    if (lower.includes('found diamond') || lower.includes('got diamond')) {
-      await this._sendChat(this.h.pick(['nice!', 'lucky', 'gg', 'wow']));
+    if (/\b(found?\s*diamond|diamonds?|got\s*diamond)\b/i.test(lower)) {
+      await this._sendChat(this.h.pick(['nice!', 'lucky', 'gg', 'wow', 'congrats']));
       return;
     }
 
-    // Rarely add something to general conversation
-    if (Math.random() < 0.15) {
-      const reactions = ['lol', 'true', 'fr', 'same', 'relatable'];
+    if (/\b(anyone|any1|somebody|who)\b/i.test(lower) && lower.includes('?')) {
+      // Someone asking if anyone is around — sometimes respond
+      if (Math.random() < 0.3) {
+        await this._sendChat('me');
+      }
+      return;
+    }
+
+    // Very rarely add to conversation
+    if (Math.random() < 0.1) {
+      const reactions = ['lol', 'true', 'fr', 'same', 'relatable', 'big true', 'ngl'];
       await this._sendChat(this.h.pick(reactions));
     }
   }
 
   /**
-   * Answer a question — try LLM first, then fallback
+   * Answer a question
    */
   async _answerQuestion(username, message) {
     if (this.llmConfig.enabled) {
@@ -136,16 +177,16 @@ class SocialManager {
       }
     }
 
-    // Fallback: vague response (doesn't reveal bot nature)
     const vague = [
-      'idk', 'not sure', 'maybe?', 'hmm', 'good question',
+      'idk', 'not sure tbh', 'maybe?', 'hmm', 'good question',
       'no idea lol', 'probably', 'i think so', 'maybe not?',
+      'who knows', 'wouldnt bet on it', 'yea probably'
     ];
     await this._sendChat(this.h.pick(vague));
   }
 
   /**
-   * Query LLM for chat response
+   * Query LLM
    */
   async _queryLLM(username, message) {
     const fetch = (await import('node-fetch')).default;
@@ -167,19 +208,18 @@ class SocialManager {
   }
 
   /**
-   * Send chat with possible typo + correction
+   * Send chat with typo + possible correction
    */
   async _sendChat(text) {
     await this.h.throttleAPM();
 
-    // Maybe add a typo
     let finalText = this.h.maybeTypo(text);
 
-    // If we made a typo, sometimes "correct" it
-    if (finalText !== text && Math.random() < 0.6) {
+    // Typo + correction pattern (like real players)
+    if (finalText !== text && Math.random() < (this.h.config.typoCorrectChance || 0.6)) {
       this.bot.chat(finalText);
-      await this.h.delay(800, 2500);
-      this.bot.chat(`${text}*`); // Correction with asterisk
+      await this.h.delay(800, 3000);
+      this.bot.chat(`${text}*`);
     } else {
       this.bot.chat(finalText);
     }

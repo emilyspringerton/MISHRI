@@ -1,0 +1,144 @@
+name: Mishri Bot Test Run
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Test duration in minutes (5-19)'
+        required: false
+        default: '10'
+      server_host:
+        description: 'Minecraft server host'
+        required: false
+        default: 'localhost'
+      server_port:
+        description: 'Minecraft server port'
+        required: false
+        default: '25565'
+
+jobs:
+  test-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      minecraft:
+        image: itzg/minecraft-server:java21
+        env:
+          EULA: "TRUE"
+          TYPE: "PAPER"
+          VERSION: "26.2"
+          ONLINE_MODE: "false"
+          MOTD: "Mishri Test Server"
+          DIFFICULTY: "peaceful"
+          MODE: "survival"
+          MAX_PLAYERS: 20
+          SPAWN_PROTECTION: 0
+        ports:
+          - 25565:25565
+        options: >-
+          --health-cmd "mc-monitor status"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 20
+
+    steps:
+      - name: Checkout Mishri
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Minecraft server
+        run: |
+          echo "Waiting for Minecraft server to start..."
+          for i in $(seq 1 60); do
+            if nc -z localhost 25565 2>/dev/null; then
+              echo "Server is listening on port 25565!"
+              sleep 10  # Give it time to fully initialize
+              break
+            fi
+            echo "Attempt $i/60 - server not ready yet..."
+            sleep 5
+          done
+
+      - name: Run humanness tests
+        run: npm test
+
+      - name: Calculate test duration
+        id: duration
+        run: |
+          # Random duration between 5-19 minutes if not specified
+          if [ "${{ github.event.inputs.duration }}" != "" ]; then
+            DURATION=${{ github.event.inputs.duration }}
+          else
+            DURATION=$((RANDOM % 15 + 5))
+          fi
+          # Clamp to 5-19 range
+          if [ "$DURATION" -lt 5 ]; then DURATION=5; fi
+          if [ "$DURATION" -gt 19 ]; then DURATION=19; fi
+          echo "duration=$DURATION" >> $GITHUB_OUTPUT
+          echo "Test will run for $DURATION minutes"
+
+      - name: Run Mishri Bot
+        env:
+          MISHRI_SERVER_HOST: localhost
+          MISHRI_SERVER_PORT: 25565
+          MISHRI_SERVER_VERSION: "26.2"
+          MISHRI_DURATION_MINUTES: ${{ steps.duration.outputs.duration }}
+        run: |
+          # Create a run config that auto-disconnects after the test duration
+          DURATION_MS=$((${{ steps.duration.outputs.duration }} * 60 * 1000))
+          
+          echo "Starting Mishri for ${{ steps.duration.outputs.duration }} minutes..."
+          
+          # Run the bot with a timeout
+          timeout $(( ${{ steps.duration.outputs.duration }} * 60 + 30 )) node -e "
+            const MishriBot = require('./src/core/MishriBot');
+            
+            const bot = new MishriBot({
+              server: {
+                host: process.env.MISHRI_SERVER_HOST || 'localhost',
+                port: parseInt(process.env.MISHRI_SERVER_PORT || '25565'),
+                version: process.env.MISHRI_SERVER_VERSION || '26.2'
+              }
+            });
+            
+            bot.connect();
+            
+            // Auto-disconnect after test duration
+            const durationMs = parseInt(process.env.MISHRI_DURATION_MINUTES || '10') * 60 * 1000;
+            setTimeout(async () => {
+              console.log('[Test] Duration reached, disconnecting...');
+              await bot.disconnect();
+              console.log('[Test] Mishri test run complete!');
+              process.exit(0);
+            }, durationMs);
+            
+            // Handle errors gracefully
+            process.on('uncaughtException', (err) => {
+              console.error('[Test] Uncaught:', err.message);
+            });
+          " || true
+          
+          echo "Mishri bot test run finished."
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Mishri Test Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Duration**: ${{ steps.duration.outputs.duration }} minutes" >> $GITHUB_STEP_SUMMARY
+          echo "- **Server**: v26.2 (Paper)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bot**: Mishri (human-like)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Humanness Tests**: See above" >> $GITHUB_STEP_SUMMARY
