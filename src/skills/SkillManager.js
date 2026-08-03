@@ -1,6 +1,6 @@
 /**
- * Skill Manager — Simulated human skills (with imperfection!)
- * Mining, building, eating, etc. — all done "badly"
+ * Skill Manager — Actually functional skills (with human imperfection!)
+ * Mining, eating, crafting, building — the bot can DO things now
  */
 
 class SkillManager {
@@ -13,23 +13,27 @@ class SkillManager {
    * Mine a random nearby block — imperfectly
    */
   async mineRandom() {
-    // Find a breakable block nearby
     const pos = this.bot.entity.position;
-    const radius = 6;
+    const radius = 5;
     const targets = [];
 
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dy = -radius; dy <= radius; dy++) {
         for (let dz = -radius; dz <= radius; dz++) {
-          const block = this.bot.blockAt(pos.offset(dx, dy, dz));
-          if (block && block.name !== 'air' && this.bot.canDigBlock(block)) {
-            targets.push(block);
-          }
+          try {
+            const block = this.bot.blockAt(pos.offset(dx, dy, dz));
+            if (block && block.name !== 'air' && block.name !== 'cave_air' && this.bot.canDigBlock(block)) {
+              targets.push(block);
+            }
+          } catch (e) { /* skip invalid positions */ }
         }
       }
     }
 
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      console.log('[Skill] No mineable blocks nearby');
+      return;
+    }
 
     // Don't always pick the closest — humans are sub-optimal
     const target = targets[Math.floor(Math.random() * Math.min(targets.length, 8))];
@@ -46,27 +50,36 @@ class SkillManager {
       // Hesitate before mining
       await this.h.delay(300, 1500);
 
-      // Equip best tool (with delay like opening inventory)
+      // Equip best tool (with inventory fumble delay)
       await this.h.delay(500, 1500);
-      const tool = this.bot.pathfinder.bestHarvestTool(target);
-      if (tool) {
-        await this.bot.equip(tool, 'hand');
+      try {
+        const tool = this.bot.pathfinder.bestHarvestTool(target);
+        if (tool) {
+          await this.bot.equip(tool, 'hand');
+        }
+      } catch (e) {
+        // Tool equipping can fail, just mine with hand
       }
 
       // Mine the block
       await this.bot.dig(target, true);
+      this.h.onInterestingEvent();
 
-      // Sometimes miss and hit the wrong block (5% chance)
-      if (Math.random() < 0.05 && targets.length > 1) {
-        const wrongTarget = this.h.pick(targets.filter((t) => t !== target));
-        if (wrongTarget && this.bot.canDigBlock(wrongTarget)) {
-          console.log('[Skill] Oops, mining wrong block!');
-          await this.bot.dig(wrongTarget, true);
+      // Sometimes mine an adjacent block too (humans keep going)
+      if (Math.random() < 0.3) {
+        const adjacent = targets.find(t =>
+          t !== target &&
+          Math.abs(t.position.x - target.position.x) <= 1 &&
+          Math.abs(t.position.y - target.position.y) <= 1 &&
+          Math.abs(t.position.z - target.position.z) <= 1
+        );
+        if (adjacent && this.bot.canDigBlock(adjacent)) {
+          await this.h.delay(200, 800);
+          await this.bot.dig(adjacent, true);
         }
       }
 
     } catch (err) {
-      // Mining failed — just move on like a human would
       console.log(`[Skill] Mining failed: ${err.message}`);
     }
   }
@@ -76,14 +89,20 @@ class SkillManager {
    */
   async eatFood() {
     // Humans eat at ~7-9 hunger, not at 0
-    if (this.bot.food > 18) return; // Not hungry
-    if (this.bot.food > 12 && Math.random() < 0.7) return; // Might wait
+    if (this.bot.food > 18) return;
+    if (this.bot.food > 12 && Math.random() < 0.7) return;
 
     const foodItem = this.bot.inventory.items().find((item) =>
       item.name.includes('bread') ||
       item.name.includes('cooked') ||
       item.name.includes('apple') ||
-      item.name.includes('meat')
+      item.name.includes('meat') ||
+      item.name.includes('beef') ||
+      item.name.includes('pork') ||
+      item.name.includes('fish') ||
+      item.name.includes('carrot') ||
+      item.name.includes('potato') ||
+      item.name.includes('melon')
     );
 
     if (!foodItem) return;
@@ -93,53 +112,141 @@ class SkillManager {
       await this.bot.equip(foodItem, 'hand');
       await this.h.delay(200, 600); // Bring to mouth
       await this.bot.consume();
+      console.log(`[Skill] Ate ${foodItem.name} (hunger: ${this.bot.food})`);
     } catch (err) {
       console.log(`[Skill] Eating failed: ${err.message}`);
     }
   }
 
   /**
-   * Place a block — sometimes the wrong one
+   * Craft a basic item — with fumbling delays
    */
-  async placeBlock(referenceBlock, face) {
+  async craftBasic() {
     try {
-      await this.h.delay(300, 800); // Placement hesitation
-      await this.bot.placeBlock(referenceBlock, face);
+      // Find something we can craft
+      const recipes = this.bot.recipesAll();
+      const craftable = recipes.filter(r => r.result && this.bot.inventory.countInventoryItem);
+
+      if (craftable.length === 0) {
+        console.log('[Skill] Nothing to craft');
+        return;
+      }
+
+      // Pick a random simple recipe
+      const recipe = craftable[Math.floor(Math.random() * Math.min(craftable.length, 10))];
+
+      // Human fumble: open inventory multiple times
+      await this.h.delay(1000, 3000);
+      if (Math.random() < 0.15) {
+        await this.h.delay(500, 1500);
+      }
+
+      await this.bot.craft(recipe, 1, null);
+      await this.h.delay(500, 1500);
+      console.log(`[Skill] Crafted: ${recipe.result?.name || 'something'}`);
+      this.h.onInterestingEvent();
+
+    } catch (err) {
+      console.log(`[Skill] Crafting failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Place a block from inventory — sometimes the wrong one
+   */
+  async placeBlock() {
+    try {
+      // Find a placeable block in inventory
+      const blockItem = this.bot.inventory.items().find(item => {
+        const mcData = require('minecraft-data')(this.bot.version);
+        return mcData.blocksByName[item.name] !== undefined;
+      });
+
+      if (!blockItem) {
+        console.log('[Skill] No blocks to place');
+        return;
+      }
+
+      await this.bot.equip(blockItem, 'hand');
+      await this.h.delay(300, 800);
+
+      // Find a reference block to place against (the one we're standing on)
+      const below = this.bot.blockAt(this.bot.entity.position.offset(0, -1, 0));
+      if (!below) return;
+
+      // Place on top of it
+      const face = { x: 0, y: 1, z: 0 };
+      await this.bot.placeBlock(below, face);
 
       // 3% chance: place wrong block, then fix
       if (Math.random() < 0.03) {
         console.log('[Skill] Wrong block placed! Fixing...');
         await this.h.delay(1000, 3000);
-        // Dig it back up
-        const wrongBlock = this.bot.blockAt(referenceBlock.position.offset(
-          face.x, face.y, face.z
-        ));
+        const wrongBlock = this.bot.blockAt(below.position.offset(face.x, face.y, face.z));
         if (wrongBlock) {
           await this.bot.dig(wrongBlock);
         }
       }
+
+      this.h.onInterestingEvent();
+
     } catch (err) {
       console.log(`[Skill] Placing failed: ${err.message}`);
     }
   }
 
   /**
-   * Craft an item — with fumbling delays
+   * Chop a tree — find and mine log blocks
    */
-  async craftItem(recipe, count = 1) {
-    try {
-      // Open crafting table (or inventory) with delay
-      await this.h.delay(1000, 3000);
+  async chopTree() {
+    const pos = this.bot.entity.position;
+    const radius = 10;
+    let logBlock = null;
 
-      // Humans often open inventory multiple times
-      if (Math.random() < 0.15) {
-        await this.h.delay(500, 1500);
+    // Find nearest log
+    for (let dx = -radius; dx <= radius && !logBlock; dx++) {
+      for (let dy = -3; dy <= 10 && !logBlock; dy++) {
+        for (let dz = -radius; dz <= radius && !logBlock; dz++) {
+          const block = this.bot.blockAt(pos.offset(dx, dy, dz));
+          if (block && (block.name.includes('log') || block.name.includes('stem'))) {
+            if (this.bot.canDigBlock(block)) {
+              logBlock = block;
+            }
+          }
+        }
       }
+    }
 
-      await this.bot.craft(recipe, count, null);
-      await this.h.delay(500, 1500); // Admire result
+    if (!logBlock) {
+      console.log('[Skill] No trees nearby');
+      return;
+    }
+
+    try {
+      // Walk near the tree first
+      await this.h.smoothTurn(
+        this.bot,
+        this._getYawTo(logBlock.position),
+        this._getPitchTo(logBlock.position),
+        6
+      );
+
+      await this.h.delay(500, 1500);
+
+      // Equip axe
+      try {
+        const axe = this.bot.inventory.items().find(i =>
+          i.name.includes('axe') || i.name.includes('_axe')
+        );
+        if (axe) await this.bot.equip(axe, 'hand');
+      } catch (e) {}
+
+      await this.bot.dig(logBlock, true);
+      console.log(`[Skill] Chopped: ${logBlock.name}`);
+      this.h.onInterestingEvent();
+
     } catch (err) {
-      console.log(`[Skill] Crafting failed: ${err.message}`);
+      console.log(`[Skill] Chopping failed: ${err.message}`);
     }
   }
 

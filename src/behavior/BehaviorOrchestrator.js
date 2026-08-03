@@ -1,23 +1,21 @@
 /**
  * Behavior Orchestrator — What should Mishri do right now?
- * Uses utility-based scoring with randomness for unpredictable behavior
+ * Utility-based scoring with randomness + actual functional behaviors
  */
 
 class BehaviorOrchestrator {
   constructor(bot, humanness, mishri) {
     this.bot = bot;
     this.h = humanness;
-    this.mishri = mishri; // Reference to parent MishriBot
+    this.mishri = mishri;
     this.running = false;
     this.currentBehavior = null;
     this.behaviorInterval = null;
     this.afkInterval = null;
     this.lastBehaviorTime = 0;
+    this.behaviorHistory = []; // Track what we've been doing
   }
 
-  /**
-   * Start the behavior loop
-   */
   start() {
     this.running = true;
     this._behaviorLoop();
@@ -36,12 +34,13 @@ class BehaviorOrchestrator {
     if (!this.running) return;
 
     try {
-      // Decide what to do
       const behavior = this._decideBehavior();
       console.log(`[Behavior] Decided: ${behavior.name} (score: ${behavior.score.toFixed(2)})`);
 
-      // Execute with human-like engagement
       this.currentBehavior = behavior.name;
+      this.behaviorHistory.push({ name: behavior.name, time: Date.now() });
+      if (this.behaviorHistory.length > 50) this.behaviorHistory.shift();
+
       await behavior.execute();
       this.currentBehavior = null;
 
@@ -51,69 +50,96 @@ class BehaviorOrchestrator {
     }
 
     // Variable interval between decisions (human-like pacing)
-    const nextDelay = 5000 + Math.random() * 20000;
+    const nextDelay = 3000 + Math.random() * 15000;
     this.behaviorInterval = setTimeout(() => this._behaviorLoop(), nextDelay);
   }
 
   /**
-   * Utility AI — score each possible behavior and pick the best
-   * But add randomness so it's not always the same choice
+   * Utility AI — score behaviors and pick the best
    */
   _decideBehavior() {
     const behaviors = [
       { name: 'wander', score: this._scoreWander(), execute: () => this._doWander() },
       { name: 'mine', score: this._scoreMine(), execute: () => this._doMine() },
+      { name: 'chopTree', score: this._scoreChopTree(), execute: () => this._doChopTree() },
+      { name: 'eat', score: this._scoreEat(), execute: () => this._doEat() },
       { name: 'socialize', score: this._scoreSocialize(), execute: () => this._doSocialize() },
-      { name: 'idle', score: this._scoreIdle(), execute: () => this._doIdle() },
+      { name: 'craft', score: this._scoreCraft(), execute: () => this._doCraft() },
       { name: 'explore', score: this._scoreExplore(), execute: () => this._doExplore() },
+      { name: 'idle', score: this._scoreIdle(), execute: () => this._doIdle() },
       { name: 'fidget', score: this._scoreFidget(), execute: () => this._doFidget() },
     ];
 
-    // Add random noise to all scores (prevents predictability)
+    // Add random noise (prevents predictability)
     behaviors.forEach((b) => {
       b.score += (Math.random() - 0.5) * 0.3;
       b.score = Math.max(0, b.score);
     });
 
-    // Sort by score, pick the best
+    // Penalize doing the same thing repeatedly
+    const recentNames = this.behaviorHistory.slice(-3).map(b => b.name);
+    behaviors.forEach((b) => {
+      const repeats = recentNames.filter(n => n === b.name).length;
+      b.score -= repeats * 0.15; // Less likely to repeat
+    });
+
     behaviors.sort((a, b) => b.score - a.score);
     return behaviors[0];
   }
 
-  // --- Scoring Functions ---
+  // --- Scoring ---
 
   _scoreWander() {
-    return 0.4 + Math.random() * 0.2; // Base: always somewhat interested
+    return 0.4 + this.h.curiosity * 0.2;
   }
 
   _scoreMine() {
-    const hasTool = this.bot.inventory.items().some((i) => i.name.includes('pickaxe'));
-    return hasTool ? 0.5 + Math.random() * 0.3 : 0.1;
+    const hasTool = this.bot.inventory.items().some(i => i.name.includes('pickaxe') || i.name.includes('_pickaxe'));
+    return hasTool ? 0.5 + Math.random() * 0.3 : 0.15;
+  }
+
+  _scoreChopTree() {
+    const hasAxe = this.bot.inventory.items().some(i => i.name.includes('axe') || i.name.includes('_axe'));
+    return hasAxe ? 0.4 + Math.random() * 0.2 : 0.2;
+  }
+
+  _scoreEat() {
+    // Urgent if hungry
+    if (this.bot.food < 10) return 0.9;
+    if (this.bot.food < 16) return 0.3;
+    return 0.05;
   }
 
   _scoreSocialize() {
-    const nearbyPlayers = this.mishri.perception.getNearbyPlayerCount();
-    return nearbyPlayers > 0 ? 0.6 + nearbyPlayers * 0.1 : 0.05;
+    const nearby = this.mishri.perception?.getNearbyPlayerCount?.() || 0;
+    const socialMult = this.h.socialEnergy;
+    return nearby > 0 ? (0.5 + nearby * 0.1) * socialMult : 0.05;
   }
 
-  _scoreIdle() {
-    return 0.3 + Math.random() * 0.2; // Sometimes just... do nothing
+  _scoreCraft() {
+    // After mining, often want to craft
+    const recentMine = this.behaviorHistory.slice(-5).some(b => b.name === 'mine' || b.name === 'chopTree');
+    return recentMine ? 0.4 : 0.15;
   }
 
   _scoreExplore() {
-    return 0.35 + Math.random() * 0.25;
+    return 0.3 + this.h.curiosity * 0.3;
+  }
+
+  _scoreIdle() {
+    return this.h.boredom * 0.3 + 0.15;
   }
 
   _scoreFidget() {
-    return 0.2 + Math.random() * 0.15; // Subtle fidgeting
+    return 0.15 + Math.random() * 0.1;
   }
 
-  // --- Behavior Executors ---
+  // --- Executors ---
 
   async _doWander() {
     if (!this.mishri.movement) return;
     await this.h.reactionDelay();
-    await this.mishri.movement.wander(32 + Math.random() * 32);
+    await this.mishri.movement.wander(16 + Math.random() * 32);
   }
 
   async _doMine() {
@@ -122,57 +148,76 @@ class BehaviorOrchestrator {
     await this.mishri.skills.mineRandom();
   }
 
+  async _doChopTree() {
+    if (!this.mishri.skills) return;
+    await this.h.reactionDelay();
+    await this.mishri.skills.chopTree();
+  }
+
+  async _doEat() {
+    if (!this.mishri.skills) return;
+    await this.mishri.skills.eatFood();
+  }
+
   async _doSocialize() {
-    // Find nearby player and approach
     const players = Object.values(this.bot.entities)
-      .filter((e) => e.type === 'player' && e !== this.bot.entity)
+      .filter(e => e.type === 'player' && e !== this.bot.entity)
       .sort((a, b) =>
         this.bot.entity.position.distanceTo(a.position) -
         this.bot.entity.position.distanceTo(b.position)
       );
 
     if (players.length > 0) {
+      // Approach the nearest player
       await this.mishri.movement.approachEntity(players[0], 4);
+
       // Maybe say something
-      if (Math.random() < 0.3) {
-        const remarks = ['whats up', 'need anything?', 'nice base', 'howdy'];
+      if (Math.random() < 0.4) {
+        const remarks = ['whats up', 'need anything?', 'nice base', 'howdy', 'hey', 'cool stuff'];
         this.bot.chat(this.h.pick(remarks));
       }
+      this.h.onSocialInteraction();
+    } else {
+      // No one nearby, just wander toward spawn/players
+      await this.mishri.movement.wander(32);
     }
   }
 
-  async _doIdle() {
-    // Do nothing for a while — just exist
-    const duration = 3000 + Math.random() * 10000;
-    await this.h.delay(duration);
-
-    // Maybe scroll hotbar while idle
-    if (Math.random() < 0.4) {
-      const slot = this.h.randInt(0, 8);
-      this.bot.setQuickBarSlot(slot);
-    }
+  async _doCraft() {
+    if (!this.mishri.skills) return;
+    await this.mishri.skills.craftBasic();
   }
 
   async _doExplore() {
     if (!this.mishri.movement) return;
-    // Explore further than wandering
-    await this.mishri.movement.wander(64 + Math.random() * 64);
+    await this.mishri.movement.wander(48 + Math.random() * 64);
+  }
+
+  async _doIdle() {
+    const duration = 3000 + Math.random() * 8000;
+    await this.h.delay(duration);
+
+    // Fidget while idle
+    if (Math.random() < 0.5) {
+      await this.h.maybeScrollHotbar(this.bot);
+    }
+    if (Math.random() < 0.3) {
+      await this.h.maybeSneakPeek(this.bot);
+    }
   }
 
   async _doFidget() {
-    // Small random actions that make us look alive
     const fidgets = [
       () => this.bot.setQuickBarSlot(this.h.randInt(0, 8)),
-      () => this.bot.activateItem(), // Right click (use held item)
+      () => this.bot.activateItem(),
       () => this.bot.deactivateItem(),
     ];
-
     const fidget = this.h.pick(fidgets);
-    fidget();
+    try { fidget(); } catch (e) {}
     await this.h.delay(200, 800);
   }
 
-  // --- AFK Simulation ---
+  // --- AFK ---
 
   startAFKSimulator() {
     const checkAFK = async () => {
@@ -183,13 +228,9 @@ class BehaviorOrchestrator {
         this.currentBehavior = null;
         console.log('[Behavior] Back from AFK');
       }
-
-      // Check again in 1-5 minutes
       const next = 60000 + Math.random() * 240000;
       this.afkInterval = setTimeout(checkAFK, next);
     };
-
-    // First check after 5-15 minutes
     this.afkInterval = setTimeout(checkAFK, 300000 + Math.random() * 600000);
   }
 }
