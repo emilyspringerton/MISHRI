@@ -1,0 +1,53 @@
+{
+  "server": {
+    "host": "localhost",
+    "port": 25565,
+    "version": "1.20.4"
+  },
+  "bot": {
+    "username": "Mishri",
+    "password": "",
+    "auth": "offline"
+  },
+  "humanness": {
+    "reactionDelayMin": 150,
+    "reactionDelayMax": 800,
+    "chatDelayMin": 2000,
+    "chatDelayMax": 8000,
+    "typoChance": 0.12,
+    "ignoreChatChance": 0.3,
+    "lookWanderIntervalMin": 3000,
+    "lookWanderIntervalMax": 12000,
+    "afkChance": 0.05,
+    "afkDurationMin": 10000,
+    "afkDurationMax": 120000,
+    "microStopChance": 0.03,
+    "imperfectAim": 0.85,
+    "maxAPM": 90
+  },
+  "personality": {
+    "style": "casual",
+    "greetings": ["hey", "hi", "yo", "sup", "hello"],
+    "farewells": ["cya", "later", "bye", "gg"],
+    "chatPrefix": "",
+    "emojiUse": 0.2,
+    "sentenceLength": "short"
+  },
+  "activities": {
+    "enableMining": true,
+    "enableBuilding": true,
+    "enableCombat": true,
+    "enableSocializing": true,
+    "enableWandering": true,
+    "wanderRadius": 64,
+    "sessionDurationMin": 1800000,
+    "sessionDurationMax": 7200000
+  },
+  "llm": {
+    "enabled": false,
+    "provider": "ollama",
+    "model": "llama3",
+    "baseUrl": "http://localhost:11434",
+    "maxTokens": 100
+  }
+}
