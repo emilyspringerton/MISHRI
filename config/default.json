@@ -2,7 +2,7 @@
   "server": {
     "host": "localhost",
     "port": 25565,
-    "version": "26.2"
+    "version": "1.21.11"
   },
   "bot": {
     "username": "Mishri",

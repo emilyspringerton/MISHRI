@@ -14,7 +14,7 @@ on:
       mc_version:
         description: 'Minecraft version'
         required: true
-        default: '26.2'
+        default: '1.21.11'
       bot_name:
         description: 'Bot display name'
         required: true
@@ -171,7 +171,7 @@ jobs:
               server: {
                 host: process.env.MISHRI_SERVER_HOST || 'localhost',
                 port: parseInt(process.env.MISHRI_SERVER_PORT || '25565'),
-                version: process.env.MISHRI_SERVER_VERSION || '26.2'
+                version: process.env.MISHRI_SERVER_VERSION || '1.21.11'
               },
               bot: {
                 username: process.env.MISHRI_BOT_NAME || 'Mishri',

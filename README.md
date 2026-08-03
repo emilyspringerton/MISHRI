@@ -44,7 +44,7 @@ Edit `config/default.json`:
   "server": {
     "host": "your-server.com",
     "port": 25565,
-    "version": "26.2"
+    "version": "1.21.11"
   },
   "bot": {
     "username": "Mishri",
@@ -85,7 +85,7 @@ Get your skin texture URL from [Minecraft Skin Viewer](https://mineskin.org/) or
 ## GitHub Actions Test Workflow
 
 The bot includes a ready-to-use GitHub Actions workflow that:
-1. Spins up a Paper 26.2 Minecraft server in Docker
+1. Spins up a Paper 1.21.11 Minecraft server in Docker
 2. Installs Mishri's dependencies
 3. Runs humanness tests
 4. Connects Mishri to the server for **5-19 minutes**
