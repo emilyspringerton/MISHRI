@@ -6,13 +6,14 @@
   },
   "bot": {
     "username": "Mishri",
+    "email": "",
     "password": "",
     "auth": "offline"
   },
   "skin": {
     "enabled": true,
     "url": "https://textures.minecraft.net/texture/ae0966c89e22d45a1f132d6f9a16dba0d59e6e7733f8e4a5c2a1c2",
-    "model": "classic",
+    "model": "slim",
     "fallbackUrl": ""
   },
   "humanness": {

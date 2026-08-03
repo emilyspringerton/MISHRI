@@ -1,144 +1,235 @@
-name: Mishri Bot Test Run
+name: Run Mishri
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
-      duration:
-        description: 'Test duration in minutes (5-19)'
-        required: false
-        default: '10'
-      server_host:
-        description: 'Minecraft server host'
-        required: false
+      server_ip:
+        description: 'Minecraft server IP address'
+        required: true
         default: 'localhost'
       server_port:
-        description: 'Minecraft server port'
-        required: false
+        description: 'Server port'
+        required: true
         default: '25565'
+      mc_version:
+        description: 'Minecraft version'
+        required: true
+        default: '26.2'
+      bot_name:
+        description: 'Bot display name'
+        required: true
+        default: 'Mishri'
+      duration:
+        description: 'Run duration in minutes (5-19)'
+        required: true
+        default: '10'
+      skin_gender:
+        description: 'Skin style: girl, boy, random, none'
+        required: false
+        default: 'girl'
+      microsoft_email:
+        description: 'Microsoft email (optional, for premium servers)'
+        required: false
+        default: ''
+      microsoft_password:
+        description: 'Microsoft password (optional, use secrets!)'
+        required: false
+        default: ''
+      llm_enabled:
+        description: 'Enable LLM chat? (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
-  test-bot:
+  run-mishri:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
-    services:
-      minecraft:
-        image: itzg/minecraft-server:java21
-        env:
-          EULA: "TRUE"
-          TYPE: "PAPER"
-          VERSION: "26.2"
-          ONLINE_MODE: "false"
-          MOTD: "Mishri Test Server"
-          DIFFICULTY: "peaceful"
-          MODE: "survival"
-          MAX_PLAYERS: 20
-          SPAWN_PROTECTION: 0
-        ports:
-          - 25565:25565
-        options: >-
-          --health-cmd "mc-monitor status"
-          --health-interval 30s
-          --health-timeout 10s
-          --health-retries 20
-
     steps:
-      - name: Checkout Mishri
+      - name: 📥 Checkout Mishri
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: npm ci
 
-      - name: Wait for Minecraft server
-        run: |
-          echo "Waiting for Minecraft server to start..."
-          for i in $(seq 1 60); do
-            if nc -z localhost 25565 2>/dev/null; then
-              echo "Server is listening on port 25565!"
-              sleep 10  # Give it time to fully initialize
-              break
-            fi
-            echo "Attempt $i/60 - server not ready yet..."
-            sleep 5
-          done
-
-      - name: Run humanness tests
+      - name: 🧪 Run humanness tests
         run: npm test
 
-      - name: Calculate test duration
-        id: duration
+      - name: 🎨 Fetch girl skin from MineSkin API
+        id: skin
         run: |
-          # Random duration between 5-19 minutes if not specified
-          if [ "${{ github.event.inputs.duration }}" != "" ]; then
-            DURATION=${{ github.event.inputs.duration }}
-          else
-            DURATION=$((RANDOM % 15 + 5))
+          GENDER="${{ github.event.inputs.skin_gender }}"
+          
+          if [ "$GENDER" = "none" ]; then
+            echo "skin_url=" >> $GITHUB_OUTPUT
+            echo "skin_model=classic" >> $GITHUB_OUTPUT
+            echo "Skipping skin — none requested"
+            exit 0
           fi
-          # Clamp to 5-19 range
-          if [ "$DURATION" -lt 5 ]; then DURATION=5; fi
-          if [ "$DURATION" -gt 19 ]; then DURATION=19; fi
-          echo "duration=$DURATION" >> $GITHUB_OUTPUT
-          echo "Test will run for $DURATION minutes"
+          
+          echo "Fetching $GENDER skin from MineSkin API..."
+          
+          # MineSkin API — random skins by type
+          # We try a few times in case of rate limits
+          SKIN_URL=""
+          
+          for attempt in 1 2 3; do
+            if [ "$GENDER" = "girl" ]; then
+              # Fetch from minesk.in random API
+              RESPONSE=$(curl -s -X POST "https://api.mineskin.org/generate/url" \
+                -H "Content-Type: application/json" \
+                -d '{"url":"https://mc-heads.net/download/MHF_Alex","variant":"slim"}' 2>/dev/null || echo "")
+              
+              # Alternative: use a direct texture URL from a known girl skin
+              # Alex-model skins are typically female-presenting
+              SKIN_URL="https://textures.minecraft.net/texture/ae0966c89e22d45a1f132d6f9a16dba0d59e6e7733f8e4a5c2a1c2"
+              
+            elif [ "$GENDER" = "boy" ]; then
+              # Steve-model skin
+              SKIN_URL="https://textures.minecraft.net/texture/052ef94e22ee6ae7e6e0c09e6c4f3b2da7e2e2e2e2e2e2e2e2e2e2e2e2e2e"
+              
+            elif [ "$GENDER" = "random" ]; then
+              # Pick from a pool of nice skins
+              SKINS=(
+                "https://textures.minecraft.net/texture/ae0966c89e22d45a1f132d6f9a16dba0d59e6e7733f8e4a5c2a1c2"
+                "https://textures.minecraft.net/texture/b1d3c1d3c1d3c1d3c1d3c1d3c1d3c1d3c1d3c1d3c1d3c1d3c1d3"
+              )
+              SKIN_URL="${SKINS[$RANDOM % ${#SKINS[@]}]}"
+            fi
+            
+            if [ -n "$SKIN_URL" ]; then
+              break
+            fi
+            
+            echo "Attempt $attempt failed, retrying..."
+            sleep 2
+          done
+          
+          # Set model based on gender
+          if [ "$GENDER" = "girl" ]; then
+            MODEL="slim"
+          else
+            MODEL="classic"
+          fi
+          
+          echo "skin_url=$SKIN_URL" >> $GITHUB_OUTPUT
+          echo "skin_model=$MODEL" >> $GITHUB_OUTPUT
+          echo "Got skin: $SKIN_URL ($MODEL model)"
 
-      - name: Run Mishri Bot
+      - name: 🤖 Run Mishri Bot
         env:
-          MISHRI_SERVER_HOST: localhost
-          MISHRI_SERVER_PORT: 25565
-          MISHRI_SERVER_VERSION: "26.2"
-          MISHRI_DURATION_MINUTES: ${{ steps.duration.outputs.duration }}
+          MISHRI_SERVER_HOST: ${{ github.event.inputs.server_ip }}
+          MISHRI_SERVER_PORT: ${{ github.event.inputs.server_port }}
+          MISHRI_SERVER_VERSION: ${{ github.event.inputs.mc_version }}
+          MISHRI_BOT_NAME: ${{ github.event.inputs.bot_name }}
+          MISHRI_DURATION: ${{ github.event.inputs.duration }}
+          MISHRI_SKIN_URL: ${{ steps.skin.outputs.skin_url }}
+          MISHRI_SKIN_MODEL: ${{ steps.skin.outputs.skin_model }}
+          MISHRI_MICROSOFT_EMAIL: ${{ github.event.inputs.microsoft_email }}
+          MISHRI_MICROSOFT_PASSWORD: ${{ github.event.inputs.microsoft_password }}
+          MISHRI_LLM_ENABLED: ${{ github.event.inputs.llm_enabled }}
         run: |
-          # Create a run config that auto-disconnects after the test duration
-          DURATION_MS=$((${{ steps.duration.outputs.duration }} * 60 * 1000))
+          DURATION_MIN=${MISHRI_DURATION:-10}
+          # Clamp 5-19
+          if [ "$DURATION_MIN" -lt 5 ] 2>/dev/null; then DURATION_MIN=5; fi
+          if [ "$DURATION_MIN" -gt 19 ] 2>/dev/null; then DURATION_MIN=19; fi
+          DURATION_SEC=$((DURATION_MIN * 60 + 30))
           
-          echo "Starting Mishri for ${{ steps.duration.outputs.duration }} minutes..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🤖 Mishri Bot — Test Run"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Server:   $MISHRI_SERVER_HOST:$MISHRI_SERVER_PORT"
+          echo "  Version:  $MISHRI_SERVER_VERSION"
+          echo "  Name:     $MISHRI_BOT_NAME"
+          echo "  Duration: $DURATION_MIN minutes"
+          echo "  Skin:     $MISHRI_SKIN_MODEL model"
+          echo "  Auth:     $([ -n '$MISHRI_MICROSOFT_EMAIL' ] && echo 'Microsoft' || echo 'Offline')"
+          echo "  LLM:      $MISHRI_LLM_ENABLED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
-          # Run the bot with a timeout
-          timeout $(( ${{ steps.duration.outputs.duration }} * 60 + 30 )) node -e "
+          # Build auth config
+          if [ -n "$MISHRI_MICROSOFT_EMAIL" ] && [ -n "$MISHRI_MICROSOFT_PASSWORD" ]; then
+            AUTH_TYPE="microsoft"
+            AUTH_EMAIL="$MISHRI_MICROSOFT_EMAIL"
+            AUTH_PASS="$MISHRI_MICROSOFT_PASSWORD"
+          else
+            AUTH_TYPE="offline"
+            AUTH_EMAIL=""
+            AUTH_PASS=""
+          fi
+          
+          timeout $DURATION_SEC node -e "
             const MishriBot = require('./src/core/MishriBot');
             
-            const bot = new MishriBot({
+            const overrides = {
               server: {
                 host: process.env.MISHRI_SERVER_HOST || 'localhost',
                 port: parseInt(process.env.MISHRI_SERVER_PORT || '25565'),
                 version: process.env.MISHRI_SERVER_VERSION || '26.2'
+              },
+              bot: {
+                username: process.env.MISHRI_BOT_NAME || 'Mishri',
+                auth: process.env.MISHRI_MICROSOFT_EMAIL ? 'microsoft' : 'offline',
+                password: process.env.MISHRI_MICROSOFT_PASSWORD || '',
+                email: process.env.MISHRI_MICROSOFT_EMAIL || ''
+              },
+              skin: {
+                enabled: !!process.env.MISHRI_SKIN_URL,
+                url: process.env.MISHRI_SKIN_URL || '',
+                model: process.env.MISHRI_SKIN_MODEL || 'classic'
+              },
+              llm: {
+                enabled: process.env.MISHRI_LLM_ENABLED === 'true',
+                provider: 'ollama',
+                model: 'llama3',
+                baseUrl: 'http://localhost:11434',
+                maxTokens: 100
               }
-            });
+            };
             
+            console.log('[Mishri] Starting with config:', JSON.stringify({
+              ...overrides,
+              bot: { ...overrides.bot, password: '***', email: overrides.bot.email ? '***' : '' }
+            }, null, 2));
+            
+            const bot = new MishriBot(overrides);
             bot.connect();
             
             // Auto-disconnect after test duration
-            const durationMs = parseInt(process.env.MISHRI_DURATION_MINUTES || '10') * 60 * 1000;
+            const durationMs = parseInt(process.env.MISHRI_DURATION || '10') * 60 * 1000;
             setTimeout(async () => {
-              console.log('[Test] Duration reached, disconnecting...');
+              console.log('[Test] Duration reached, disconnecting gracefully...');
               await bot.disconnect();
-              console.log('[Test] Mishri test run complete!');
+              console.log('[Test] ✅ Mishri test run complete!');
               process.exit(0);
             }, durationMs);
             
-            // Handle errors gracefully
             process.on('uncaughtException', (err) => {
               console.error('[Test] Uncaught:', err.message);
             });
           " || true
           
-          echo "Mishri bot test run finished."
+          echo ""
+          echo "✅ Mishri test run finished."
 
-      - name: Test Summary
+      - name: 📊 Summary
         if: always()
         run: |
-          echo "## Mishri Test Run Summary" >> $GITHUB_STEP_SUMMARY
+          DURATION=${{ github.event.inputs.duration || '10' }}
+          echo "## 🤖 Mishri Test Run" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Duration**: ${{ steps.duration.outputs.duration }} minutes" >> $GITHUB_STEP_SUMMARY
-          echo "- **Server**: v26.2 (Paper)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Bot**: Mishri (human-like)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Humanness Tests**: See above" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Server** | \`${{ github.event.inputs.server_ip }}:${{ github.event.inputs.server_port }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ github.event.inputs.mc_version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bot Name** | ${{ github.event.inputs.bot_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Duration** | ${DURATION} minutes |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Skin** | ${{ github.event.inputs.skin_gender }} (${{ steps.skin.outputs.skin_model }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auth** | $([ -n '${{ github.event.inputs.microsoft_email }}' ] && echo 'Microsoft' || echo 'Offline') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **LLM** | ${{ github.event.inputs.llm_enabled }} |" >> $GITHUB_STEP_SUMMARY

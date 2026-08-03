@@ -40,29 +40,45 @@ class MishriBot {
    * Connect to the Minecraft server
    */
   connect() {
-    console.log(`[Mishri] Connecting as ${this.config.bot.username} to ${this.config.server.host}:${this.config.server.port} (v${this.config.server.version})`);
+    const isMicrosoft = this.config.bot.auth === 'microsoft' || 
+                         SkinManager.isMicrosoftAuth(
+                           this.config.bot.email,
+                           this.config.bot.password
+                         );
+
+    const authType = isMicrosoft ? 'microsoft' : (this.config.bot.auth || 'offline');
+    const username = isMicrosoft ? (this.config.bot.email || this.config.bot.username) : this.config.bot.username;
+    const password = isMicrosoft ? this.config.bot.password : (this.config.bot.password || '');
+
+    console.log(`[Mishri] Connecting as ${isMicrosoft ? this.config.bot.username + ' (Microsoft)' : this.config.bot.username} to ${this.config.server.host}:${this.config.server.port} (v${this.config.server.version})`);
 
     const botOptions = {
       host: this.config.server.host,
       port: this.config.server.port,
-      username: this.config.bot.username,
-      password: this.config.bot.password,
-      auth: this.config.bot.auth,
+      username: username,
+      password: password,
+      auth: authType,
       version: this.config.server.version,
       hideErrors: false,
     };
 
-    // Inject skin profile properties
-    const skinProps = this.skin.getProfileProperties();
-    if (skinProps) {
-      botOptions.profileProperties = skinProps;
-      console.log('[Mishri] Custom skin will be applied');
+    // Only inject skin for offline auth (Microsoft auth uses the premium skin)
+    if (!isMicrosoft) {
+      const skinProps = this.skin.getProfileProperties();
+      if (skinProps) {
+        botOptions.profileProperties = skinProps;
+        console.log('[Mishri] Custom skin will be applied (offline auth)');
+      }
+    } else {
+      console.log('[Mishri] Using Microsoft auth — premium skin will be used automatically');
     }
 
     this.bot = mineflayer.createBot(botOptions);
 
-    // Also inject skin via packet hook
-    this.skin.injectSkin(this.bot);
+    // Also inject skin via packet hook (offline only)
+    if (!isMicrosoft) {
+      this.skin.injectSkin(this.bot);
+    }
 
     // Load plugins
     this.bot.loadPlugin(pathfinder.pathfinder);
