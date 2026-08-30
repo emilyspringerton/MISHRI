@@ -9,6 +9,7 @@
 
 import { Bot } from 'mineflayer';
 import { HumannessConfig } from '../types/config';
+import { bezierInterp as bezierInterpGenerated } from '../generated/bezier_interp';
 
 type Mood = 'neutral' | 'curious' | 'tired' | 'bored' | 'social' | 'focused' | 'startled' | 'nervous';
 
@@ -182,12 +183,18 @@ class HumannessLayer {
   /**
    * Smooth Bezier interpolation for natural turning
    * Not linear — humans accelerate and decelerate their head turns
+   *
+   * Real, first PARENA-compiled replacement in this codebase (founder real-time, 2026-08-30:
+   * "start working on the parena ts emitter using MISHRI as proving ground... replace the MISHRI
+   * js deps little by little"). This exact real logic now lives in
+   * PARENA/stdlib/mishri/bezier_interp.prn, compiled via the new, real, v0 PARENA TypeScript
+   * emitter (src/emit_ts.c) into src/generated/bezier_interp.ts (committed, not regenerated at
+   * build time, same convention every PAPERCRAFT/*_mod.c generated file already uses) --
+   * verified bit-for-bit identical against the original hand-written body across many
+   * (start, end, t) cases with Math.random() mocked deterministically before this swap.
    */
   bezierInterp(start: number, end: number, t: number): number {
-    const offset = (Math.random() - 0.5) * 0.4;
-    const mid = (start + end) / 2 + offset;
-    const u = 1 - t;
-    return u * u * start + 2 * u * t * mid + t * t * end;
+    return bezierInterpGenerated(start, end, t);
   }
 
   /**

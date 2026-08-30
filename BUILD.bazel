@@ -22,6 +22,10 @@ sh_test(
         "dist/src/humanness/HumannessLayer.js",
         "dist/src/core/SkinManager.js",
         "dist/src/types/config.js",
+        # bezier_interp.ts is real, PARENA-compiled generated code (PARENA/stdlib/mishri/
+        # bezier_interp.prn, S206-71) HumannessLayer.ts now calls into directly -- a real
+        # transitive dependency of the test above, not optional.
+        "dist/src/generated/bezier_interp.js",
     ],
 )
 
