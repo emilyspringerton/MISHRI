@@ -1,0 +1,34 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# Real Bazel entry point for MISHRI (founder real-time: "MISHRI forked from an unknown author
+# please update it to build with bazel"). See MODULE.bazel's own doc comment for why this
+# repo deliberately does NOT pull in a hermetic rules_nodejs/aspect_rules_js toolchain.
+
+# :test -- the real, sandboxable, hermetic piece. Only exercises src/humanness/HumannessLayer.js
+# and src/core/SkinManager.js (both plain Node.js built-ins, no mineflayer/network dependency),
+# so this can be a genuine `bazel test` action: no network, no side effects, no `npm install`
+# needed at all.
+sh_test(
+    name = "test",
+    srcs = ["scripts/bazel_test.sh"],
+    data = [
+        "tests/humanness.test.js",
+        "src/humanness/HumannessLayer.js",
+        "src/core/SkinManager.js",
+    ],
+)
+
+# :install / :mishri -- real, deliberately NON-hermetic `bazel run` convenience wrappers around
+# the real `npm ci`/`npm start` workflow (real network access, real node_modules, real live
+# Minecraft server connection) -- see scripts/bazel_install.sh's and scripts/bazel_start.sh's own
+# doc comments for why these are `bazel run` targets, not `bazel build`/`bazel test` actions.
+sh_binary(
+    name = "install",
+    srcs = ["scripts/bazel_install.sh"],
+)
+
+sh_binary(
+    name = "mishri",
+    srcs = ["scripts/bazel_start.sh"],
+)

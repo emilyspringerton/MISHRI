@@ -1,0 +1,22 @@
+"""MISHRI — real Bazel build entry point.
+
+Founder real-time: "MISHRI forked from an unknown author please update it to build with bazel and
+also the artifacts to include a construct file the concatination check parena editor out for an
+example." Same real, pragmatic "no external bazel_dep until something real needs one" precedent
+PARENA's own MODULE.bazel already established -- this repo's own real, hermetic-and-sandboxable
+piece (the humanness-layer unit test, tests/humanness.test.js) needs nothing beyond plain Node.js
+built-ins, so no rules_nodejs/aspect_rules_js toolchain is pulled in. The `npm install`/`npm start`
+side of this project (real mineflayer network deps) is deliberately NOT wrapped as a hermetic
+Bazel build/test action -- see BUILD.bazel's own doc comment on :install/:run for why, and
+scripts/README-equivalent npm workflow for the real, normal way to run the bot itself.
+"""
+
+module(
+    name = "mishri",
+    version = "1.0.0",
+)
+
+# rules_shell -- Bazel 8+'s own real split: sh_binary/sh_test/sh_library are no longer Starlark
+# globals, a real BCR dependency now (found live: `bazel build` failed with "name 'sh_test' is
+# not defined" until this was added).
+bazel_dep(name = "rules_shell", version = "0.6.1")

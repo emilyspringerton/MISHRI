@@ -4,3 +4,4 @@ config/token.json
 *.log
 .env
 .DS_Store
+bazel-*

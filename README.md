@@ -4,6 +4,27 @@
 
 *"Not a noisy machine. A creature that hesitates, breathes, forgets, gets distracted, and occasionally does things for no reason."*
 
+## Author & License
+
+This repo is a fork of [arpitrajjj/Mishri](https://github.com/arpitrajjj/Mishri) — all credit for
+the original design and implementation goes to **arpitrajjj**, who is not affiliated with this
+organization. `package.json` declares an ISC license, but no `LICENSE` file is present in this
+fork, so the actual terms are ambiguous rather than formally established. **Use at your own
+risk.**
+
+## Build
+
+```bash
+bazel test //:test      # real, hermetic unit tests (humanness layer + skin manager)
+bazel run //:install     # npm ci — installs the real bot's own dependencies
+bazel run //:mishri      # npm start — runs the real bot
+```
+
+`bazel test //:test` needs nothing beyond plain Node.js — the humanness/skin-manager logic it
+covers has no external dependencies. `bazel run //:install`/`//:mishri` are convenience wrappers
+around the real `npm` workflow (real network access, real `node_modules`, a real live server
+connection), not hermetic Bazel actions — see `BUILD.bazel`'s own doc comments for why.
+
 ## Features
 
 - **🚶 Human-like Movement** — Bezier-curve turning with ease-in-out, micro-stutters, sub-optimal pathing, sprint toggling, variable walk speed
