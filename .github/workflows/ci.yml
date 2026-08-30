@@ -11,13 +11,18 @@ on:
   push:
   pull_request:
 
+# contents: write -- needed by the release job below (tagging + creating a GitHub Release), same
+# real split PARENA's own ci.yml already uses -- every other job scopes itself back down to
+# contents: read explicitly, only release actually needs write.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
     name: 🧪 Bazel Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +39,8 @@ jobs:
     name: 📦 Construct Bundle
     runs-on: ubuntu-latest
     needs: [test]
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -108,3 +115,80 @@ jobs:
           name: MISHRI_Construct_${{ github.run_number }}_${{ github.sha }}_zip
           path: MISHRI_CONSTRUCT.zip
           if-no-files-found: error
+
+  # release -- real, auto-tagged, non-prerelease GitHub Release on every push to main, matching
+  # this monorepo's own standing "auto release non pre release" convention (SHANKPIT/PITVIPER/
+  # PARENA/PAPERCRAFT all follow it, most recently PARENA's own 2026-08-26 "move parena from pre
+  # release releases to regular releases on auto releases"). MISHRI has no compiled binary to
+  # ship (it's a plain Node.js/mineflayer project, run via `npm start`/`bazel run //:mishri`), so
+  # unlike PARENA's own release job (which bundles the raw construct .txt alongside a real
+  # compiled binary), the full real construct bundle -- all three real forms (.txt/.tar.gz/.zip)
+  # this same commit's own construct_bundle job already produced -- IS the real release asset
+  # here: a real, versioned, downloadable snapshot of the exact source this release corresponds
+  # to, same "identify a build from its own source snapshot" reasoning PARENA's own job cites.
+  release:
+    name: 🏷️ Tag & Release
+    runs-on: ubuntu-latest
+    needs: [test, construct_bundle]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      # fetch-depth: 0 -- this job needs the full tag history to find the current version;
+      # actions/checkout's own default is a shallow clone that doesn't reliably include tags.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Construct Bundle (txt)
+        uses: actions/download-artifact@v4
+        with:
+          name: MISHRI_Construct_${{ github.run_number }}_${{ github.sha }}
+          path: dist-construct
+
+      - name: Download Construct Bundle (tar.gz)
+        uses: actions/download-artifact@v4
+        with:
+          name: MISHRI_Construct_${{ github.run_number }}_${{ github.sha }}_targz
+          path: dist-construct
+
+      - name: Download Construct Bundle (zip)
+        uses: actions/download-artifact@v4
+        with:
+          name: MISHRI_Construct_${{ github.run_number }}_${{ github.sha }}_zip
+          path: dist-construct
+
+      - name: Compute next minor version
+        id: version
+        run: |
+          set -euo pipefail
+          latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -z "$latest" ]; then
+            major=0
+            minor=0
+          else
+            ver="${latest#v}"
+            major="$(echo "$ver" | cut -d. -f1)"
+            minor="$(echo "$ver" | cut -d. -f2)"
+          fi
+          next_minor=$((minor + 1))
+          next="v${major}.${next_minor}.0"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          git tag "$NEXT_VERSION"
+          git push origin "$NEXT_VERSION"
+          # Regular (not --prerelease) -- matches this monorepo's own standing "auto release non
+          # pre release" convention, not a pre-1.0/early-development carve-out the way PARENA's
+          # compiler once had before it matured past that.
+          gh release create "$NEXT_VERSION" \
+            dist-construct/MISHRI_CONSTRUCT.txt \
+            dist-construct/MISHRI_CONSTRUCT.tar.gz \
+            dist-construct/MISHRI_CONSTRUCT.zip \
+            --title "$NEXT_VERSION" \
+            --notes "Auto-release $NEXT_VERSION. Real, full source construct bundle attached (txt/tar.gz/zip) -- MISHRI has no compiled binary, this is the real, versioned, downloadable source snapshot this release corresponds to. No functional code changes are implied by a version bump alone."
