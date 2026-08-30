@@ -3,10 +3,19 @@
  * Actually works with mineflayer-pathfinder
  */
 
-const { goals } = require('mineflayer-pathfinder');
+import { Bot } from 'mineflayer';
+import { goals } from 'mineflayer-pathfinder';
+import { Vec3 } from 'vec3';
+import HumannessLayer = require('../humanness/HumannessLayer');
 
 class MovementManager {
-  constructor(bot, humanness) {
+  bot: Bot;
+  h: HumannessLayer;
+  isMoving: boolean;
+  wanderInterval: ReturnType<typeof setTimeout> | null;
+  stuckCount: number;
+
+  constructor(bot: Bot, humanness: HumannessLayer) {
     this.bot = bot;
     this.h = humanness;
     this.isMoving = false;
@@ -17,20 +26,20 @@ class MovementManager {
   /**
    * Find the ground Y at a given x,z by scanning down from Y=320
    */
-  _findSurfaceY(x, z) {
+  private _findSurfaceY(x: number, z: number): number {
     for (let y = 320; y >= -64; y--) {
-      const block = this.bot.blockAt(new (require('vec3'))(x, y, z));
+      const block = this.bot.blockAt(new Vec3(x, y, z));
       if (block && block.name !== 'air' && block.name !== 'cave_air') {
         return y + 1; // Stand on top of this block
       }
     }
-    return Math.floor(this.bot.entity.position.y); // Fallback
+    return Math.floor(this.bot.entity!.position.y); // Fallback
   }
 
   /**
    * Walk to a position with human-like imperfections
    */
-  async walkTo(x, y, z) {
+  async walkTo(x: number, y: number, z: number): Promise<void> {
     if (this.isMoving) return;
     this.isMoving = true;
 
@@ -48,10 +57,9 @@ class MovementManager {
       // Set the goal and wait for completion
       await this.bot.pathfinder.setGoal(goal, true);
       this.stuckCount = 0;
-
     } catch (err) {
       this.stuckCount++;
-      console.log(`[Movement] Pathfinding hiccup (${this.stuckCount}): ${err.message}`);
+      console.log(`[Movement] Pathfinding hiccup (${this.stuckCount}): ${(err as Error).message}`);
 
       // If stuck multiple times, try a simple manual walk
       if (this.stuckCount >= 3) {
@@ -69,8 +77,8 @@ class MovementManager {
    * Manual walk fallback — use control states directly
    * When pathfinder fails, walk like a real player would
    */
-  async _manualWalk(targetX, targetZ) {
-    const pos = this.bot.entity.position;
+  private async _manualWalk(targetX: number, targetZ: number): Promise<void> {
+    const pos = this.bot.entity!.position;
     const dx = targetX - pos.x;
     const dz = targetZ - pos.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -105,8 +113,8 @@ class MovementManager {
   /**
    * Wander within a radius — natural exploration
    */
-  async wander(radius = 32) {
-    const pos = this.bot.entity.position;
+  async wander(radius = 32): Promise<void> {
+    const pos = this.bot.entity!.position;
     const angle = Math.random() * Math.PI * 2;
     const dist = 5 + Math.random() * radius; // Min 5 blocks so it actually moves
 
@@ -122,7 +130,7 @@ class MovementManager {
   /**
    * Start continuous wandering loop
    */
-  startWandering(intervalMin = 10000, intervalMax = 30000) {
+  startWandering(intervalMin = 10000, intervalMax = 30000): void {
     const loop = async () => {
       if (!this.bot.entity || this.isMoving) return;
 
@@ -137,7 +145,7 @@ class MovementManager {
     loop();
   }
 
-  stopWandering() {
+  stopWandering(): void {
     if (this.wanderInterval) {
       clearTimeout(this.wanderInterval);
       this.wanderInterval = null;
@@ -150,20 +158,20 @@ class MovementManager {
   /**
    * Move toward an entity naturally
    */
-  async approachEntity(entity, preferredDist = 3) {
+  async approachEntity(entity: { position?: Vec3 }, preferredDist = 3): Promise<void> {
     if (!entity?.position) return;
 
-    const dist = this.bot.entity.position.distanceTo(entity.position);
+    const dist = this.bot.entity!.position.distanceTo(entity.position);
     if (dist <= preferredDist + 1) return;
 
     // Add slight angle offset so we don't walk in a perfect line
-    const dx = entity.position.x - this.bot.entity.position.x;
-    const dz = entity.position.z - this.bot.entity.position.z;
+    const dx = entity.position.x - this.bot.entity!.position.x;
+    const dz = entity.position.z - this.bot.entity!.position.z;
     const angle = Math.atan2(dz, dx) + this.h.addNoise(0, 0.3);
 
     const targetDist = dist - preferredDist;
-    const tx = this.bot.entity.position.x + Math.cos(angle) * targetDist;
-    const tz = this.bot.entity.position.z + Math.sin(angle) * targetDist;
+    const tx = this.bot.entity!.position.x + Math.cos(angle) * targetDist;
+    const tz = this.bot.entity!.position.z + Math.sin(angle) * targetDist;
     const ty = this._findSurfaceY(Math.floor(tx), Math.floor(tz));
 
     await this.walkTo(Math.floor(tx), ty, Math.floor(tz));
@@ -172,7 +180,7 @@ class MovementManager {
   /**
    * Sprint toggle — humans don't sprint 100% of the time
    */
-  async sprintToggled(duration) {
+  async sprintToggled(duration: number): Promise<void> {
     this.bot.setControlState('sprint', true);
     this.bot.setControlState('forward', true);
     await this.h.delay(duration * 0.6, duration);
@@ -183,7 +191,7 @@ class MovementManager {
   /**
    * Jump with human timing
    */
-  async humanJump() {
+  async humanJump(): Promise<void> {
     await this.h.delay(0, 200);
     this.bot.setControlState('jump', true);
     await this.h.delay(300, 600);
@@ -191,4 +199,4 @@ class MovementManager {
   }
 }
 
-module.exports = MovementManager;
+export = MovementManager;

@@ -4,7 +4,8 @@
  * Updated for the enhanced humanoid system
  */
 
-const HumannessLayer = require('../src/humanness/HumannessLayer');
+import HumannessLayer = require('../src/humanness/HumannessLayer');
+import { HumannessConfig } from '../src/types/config';
 
 const h = new HumannessLayer({
   reactionDelayMin: 50,
@@ -29,12 +30,12 @@ const h = new HumannessLayer({
   doubleTakeChance: 0.5,
   nervousLookAroundChance: 0.5,
   stareAtPlayerChance: 0.15,
-});
+} as HumannessConfig);
 
 let passed = 0;
 let failed = 0;
 
-function assert(condition, testName) {
+function assert(condition: boolean, testName: string): void {
   if (condition) {
     console.log(`  ✅ ${testName}`);
     passed++;
@@ -44,7 +45,7 @@ function assert(condition, testName) {
   }
 }
 
-async function runTests() {
+async function runTests(): Promise<void> {
   console.log('\n🧪 Mishri Humanness Layer Tests (Enhanced)\n');
 
   // ═══ DELAY SYSTEM ═══
@@ -96,11 +97,9 @@ async function runTests() {
   assert(typoHappened, 'maybeTypo() actually produces typos sometimes');
 
   // Adjacent key typos
-  let adjacentTypoFound = false;
   for (let i = 0; i < 100; i++) {
     const result = h.maybeTypo('hello');
     if (result !== 'hello' && result.length === 5) {
-      adjacentTypoFound = true;
       break;
     }
   }
@@ -158,8 +157,10 @@ async function runTests() {
   assert(typeof state.mood === 'string', 'getState() returns mood');
   assert(typeof state.energy === 'string', 'getState() returns energy');
   assert(typeof state.boredom === 'string', 'getState() returns boredom');
-  assert(['neutral', 'curious', 'tired', 'bored', 'social', 'focused', 'startled', 'nervous'].includes(state.mood),
-    `mood "${state.mood}" is a valid mood`);
+  assert(
+    ['neutral', 'curious', 'tired', 'bored', 'social', 'focused', 'startled', 'nervous'].includes(state.mood),
+    `mood "${state.mood}" is a valid mood`
+  );
 
   // ═══ MOOD SYSTEM ═══
   console.log('\n🎭 Mood & Energy');
@@ -180,7 +181,7 @@ async function runTests() {
   const skin = new SkinManager({
     enabled: true,
     url: 'https://textures.minecraft.net/texture/test',
-    model: 'classic'
+    model: 'classic',
   });
   const props = skin.generateSkinProperties();
   assert(props !== null, 'generateSkinProperties() returns properties when enabled');

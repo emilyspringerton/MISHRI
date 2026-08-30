@@ -12,15 +12,19 @@ this code's licensing.
 
 ## Stack
 
-Node.js/CommonJS, `mineflayer` + plugin ecosystem (pathfinder, pvp, auto-eat, collectblock, tool).
-Real, layered architecture: `src/core/MishriBot.js` (main bot class) →
+TypeScript (compiled via `tsc` to CommonJS, `src/`/`tests/` → `dist/`), `mineflayer` + plugin
+ecosystem (pathfinder, pvp, auto-eat, collectblock, tool). Real, layered architecture:
+`src/core/MishriBot.ts` (main bot class) →
 `src/{movement,perception,social,behavior,skills,humanness}/` (one manager per concern) — see
-`README.md`'s own "Architecture" diagram.
+`README.md`'s own "Architecture" diagram. `src/types/` holds the shared `MishriConfig` shape
+(`config.ts`) and an ambient shim for `mineflayer-pathfinder` (`mineflayer-pathfinder.d.ts`,
+the one plugin in the ecosystem here with no upstream `.d.ts` of its own).
 
-**Build: Bazel** (`bazel test //:test` — real, hermetic humanness-layer + skin-manager coverage,
-no `npm install` needed; `bazel run //:install`/`//:mishri` wrap the real, non-hermetic `npm ci`/
-`npm start`). See `README.md`'s own "Build" section and `BUILD.bazel`'s own doc comments for the
-real hermetic/non-hermetic split.
+**Build: Bazel** (`bazel run //:install` → `bazel run //:build` (real `tsc` compile) →
+`bazel test //:test` — real, hermetic humanness-layer + skin-manager coverage against the
+already-compiled `dist/`; `bazel run //:mishri` wraps the real, non-hermetic `npm start`). See
+`README.md`'s own "Build" section and `BUILD.bazel`'s own doc comments for the real
+hermetic/non-hermetic split.
 
 ## Related Repos
 

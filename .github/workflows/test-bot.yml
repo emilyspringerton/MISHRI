@@ -58,8 +58,11 @@ jobs:
       - name: 📦 Install dependencies
         run: npm ci
 
+      - name: 🔨 Build TypeScript
+        run: npm run build
+
       - name: 🧪 Run humanness tests
-        run: npm test
+        run: node dist/tests/humanness.test.js
 
       - name: 🎨 Fetch girl skin from MineSkin API
         id: skin
@@ -165,7 +168,7 @@ jobs:
           fi
           
           timeout $DURATION_SEC node -e "
-            const MishriBot = require('./src/core/MishriBot');
+            const MishriBot = require('./dist/src/core/MishriBot');
             
             const overrides = {
               server: {

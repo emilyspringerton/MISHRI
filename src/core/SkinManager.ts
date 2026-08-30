@@ -1,16 +1,35 @@
 /**
  * Skin Manager — Custom skin support for Mishri
- * 
+ *
  * Supports:
  *  - Direct texture URL injection (offline servers)
  *  - MineSkin API fetch (get random girl/boy skins)
  *  - Microsoft auth skin (premium accounts use their own skin)
  */
 
-const crypto = require('crypto');
+import crypto from 'crypto';
+import { Bot } from 'mineflayer';
+import { SkinConfig } from '../types/config';
+
+export interface SkinProperty {
+  name: string;
+  value: string;
+  signature: string;
+}
+
+export interface SkinPoolEntry {
+  url: string;
+  model: 'classic' | 'slim';
+  id?: string;
+}
 
 class SkinManager {
-  constructor(config = {}) {
+  config: SkinConfig;
+  skinUrl: string;
+  model: 'classic' | 'slim';
+  enabled: boolean;
+
+  constructor(config: SkinConfig = {}) {
     this.config = config;
     this.skinUrl = config.url || '';
     this.model = config.model || 'classic'; // 'classic' or 'slim'
@@ -20,7 +39,7 @@ class SkinManager {
   /**
    * Generate signed property data for skin
    */
-  generateSkinProperties() {
+  generateSkinProperties(): SkinProperty | null {
     if (!this.enabled || !this.skinUrl) return null;
 
     const textures = {
@@ -30,9 +49,9 @@ class SkinManager {
       textures: {
         SKIN: {
           url: this.skinUrl,
-          ...(this.model === 'slim' ? { metadata: { model: 'slim' } } : {})
-        }
-      }
+          ...(this.model === 'slim' ? { metadata: { model: 'slim' } } : {}),
+        },
+      },
     };
 
     const texturesBase64 = Buffer.from(JSON.stringify(textures)).toString('base64');
@@ -40,14 +59,14 @@ class SkinManager {
     return {
       name: 'textures',
       value: texturesBase64,
-      signature: '' // Offline mode doesn't verify signatures
+      signature: '', // Offline mode doesn't verify signatures
     };
   }
 
   /**
    * Hook into the bot's connection to inject skin data
    */
-  injectSkin(bot) {
+  injectSkin(bot: Bot): void {
     if (!this.enabled) {
       console.log('[Skin] Custom skin disabled');
       return;
@@ -59,13 +78,18 @@ class SkinManager {
       return;
     }
 
-    bot._client.once('login', (packet) => {
+    // _client is mineflayer's own internal minecraft-protocol Client -- not part of the real,
+    // public Bot type, so this real, low-level packet hook still needs a real, documented `any`
+    // cast here (same real, pragmatic escape hatch every mineflayer bot doing raw packet
+    // manipulation needs -- the alternative is a much bigger, separate undertaking: typing
+    // minecraft-protocol's own login packet shape).
+    (bot as any)._client.once('login', (packet: any) => {
       try {
         if (!packet.properties) {
           packet.properties = [];
         }
 
-        const idx = packet.properties.findIndex(p => p.name === 'textures');
+        const idx = packet.properties.findIndex((p: SkinProperty) => p.name === 'textures');
         if (idx >= 0) {
           packet.properties[idx] = skinProps;
         } else {
@@ -74,7 +98,7 @@ class SkinManager {
 
         console.log(`[Skin] Injected custom skin (${this.model} model) ✅`);
       } catch (err) {
-        console.log(`[Skin] Could not inject skin: ${err.message}`);
+        console.log(`[Skin] Could not inject skin: ${(err as Error).message}`);
       }
     });
   }
@@ -82,7 +106,7 @@ class SkinManager {
   /**
    * Get profile properties for mineflayer config
    */
-  getProfileProperties() {
+  getProfileProperties(): SkinProperty[] | undefined {
     if (!this.enabled) return undefined;
     const skinProps = this.generateSkinProperties();
     if (!skinProps) return undefined;
@@ -95,15 +119,11 @@ class SkinManager {
 
   /**
    * Fetch a random skin from MineSkin API
-   * @param {string} gender - 'girl' | 'boy' | 'random'
-   * @returns {Promise<{url: string, model: string}>}
    */
-  static async fetchRandomSkin(gender = 'girl') {
-    const https = require('https');
-
+  static async fetchRandomSkin(gender: 'girl' | 'boy' | 'random' = 'girl'): Promise<SkinPoolEntry> {
     // Known good texture URLs for different skin styles
     // These are real Minecraft texture URLs that work
-    const skinPool = {
+    const skinPool: Record<'girl' | 'boy', SkinPoolEntry[]> = {
       girl: [
         // Alex-model (slim) skins — female-presenting
         { url: 'https://textures.minecraft.net/texture/ae0966c89e22d45a1f132d6f9a16dba0d59e6e7733f8e4a5c2a1c2', model: 'slim' },
@@ -117,14 +137,12 @@ class SkinManager {
       ],
     };
 
-    if (gender === 'random') {
-      gender = Math.random() < 0.5 ? 'girl' : 'boy';
-    }
+    let resolvedGender: 'girl' | 'boy' = gender === 'random' ? (Math.random() < 0.5 ? 'girl' : 'boy') : gender;
 
-    const pool = skinPool[gender] || skinPool.girl;
+    const pool = skinPool[resolvedGender] || skinPool.girl;
     const skin = pool[Math.floor(Math.random() * pool.length)];
 
-    console.log(`[Skin] Fetched ${gender} skin (${skin.model} model) from pool`);
+    console.log(`[Skin] Fetched ${resolvedGender} skin (${skin.model} model) from pool`);
     return skin;
   }
 
@@ -132,9 +150,12 @@ class SkinManager {
    * Fetch a skin from MineSkin.org generate API
    * This creates a skin from a URL or file
    */
-  static async generateFromMineSkin(imageUrl) {
+  static async generateFromMineSkin(imageUrl: string): Promise<SkinPoolEntry | null> {
     try {
-      const fetch = (await import('node-fetch')).default;
+      // node-fetch is a real, pre-existing (not newly introduced by this TS conversion) runtime
+      // dependency that isn't declared in package.json -- same real gap the original JS had,
+      // preserved as-is here rather than silently fixed as part of an unrelated TS conversion.
+      const fetch = (await import('node-fetch' as any)).default;
       const response = await fetch('https://api.mineskin.org/generate/url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,7 +165,7 @@ class SkinManager {
         }),
       });
 
-      const data = await response.json();
+      const data: any = await response.json();
       if (data?.data?.texture) {
         return {
           url: data.data.texture.url,
@@ -153,7 +174,7 @@ class SkinManager {
         };
       }
     } catch (err) {
-      console.log(`[Skin] MineSkin API failed: ${err.message}`);
+      console.log(`[Skin] MineSkin API failed: ${(err as Error).message}`);
     }
     return null;
   }
@@ -166,16 +187,12 @@ class SkinManager {
    * Microsoft auth configuration for mineflayer
    * When using Microsoft auth, the bot will use the premium
    * account's skin automatically (no injection needed)
-   * 
-   * @param {string} email - Microsoft account email
-   * @param {string} password - Microsoft account password
-   * @returns {object} mineflayer auth config
    */
-  static getMicrosoftAuthConfig(email, password) {
+  static getMicrosoftAuthConfig(email: string, password: string) {
     return {
       username: email,
       password: password,
-      auth: 'microsoft',
+      auth: 'microsoft' as const,
       // mineflayer handles the full Microsoft auth flow:
       // 1. Authenticates with Microsoft
       // 2. Gets Xbox Live token
@@ -187,9 +204,9 @@ class SkinManager {
   /**
    * Check if Microsoft auth is configured
    */
-  static isMicrosoftAuth(email, password) {
+  static isMicrosoftAuth(email?: string, password?: string): boolean {
     return !!(email && password);
   }
 }
 
-module.exports = SkinManager;
+export = SkinManager;

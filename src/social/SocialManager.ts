@@ -4,8 +4,27 @@
  * ignoring messages, personality moods, contextual responses
  */
 
+import { Bot } from 'mineflayer';
+import HumannessLayer = require('../humanness/HumannessLayer');
+import { MishriConfig, PersonalityConfig, LlmConfig } from '../types/config';
+
+interface ChatHistoryEntry {
+  username: string;
+  message: string;
+  time: number;
+}
+
 class SocialManager {
-  constructor(bot, humanness, config) {
+  bot: Bot;
+  h: HumannessLayer;
+  personality: PersonalityConfig;
+  llmConfig: LlmConfig;
+  chatHistory: ChatHistoryEntry[];
+  lastResponse: number;
+  conversationalMemory: Map<string, string[]>;
+  recentTopics: string[];
+
+  constructor(bot: Bot, humanness: HumannessLayer, config: MishriConfig) {
     this.bot = bot;
     this.h = humanness;
     this.personality = config.personality;
@@ -19,14 +38,14 @@ class SocialManager {
   /**
    * Handle incoming chat
    */
-  async onChat(username, message) {
+  async onChat(username: string, message: string): Promise<void> {
     this.chatHistory.push({ username, message, time: Date.now() });
     if (this.chatHistory.length > 100) this.chatHistory.shift();
 
     if (!this.conversationalMemory.has(username)) {
       this.conversationalMemory.set(username, []);
     }
-    this.conversationalMemory.get(username).push(message);
+    this.conversationalMemory.get(username)!.push(message);
 
     // Skip if we just responded (humans don't reply to every message)
     if (Date.now() - this.lastResponse < 5000) return;
@@ -58,7 +77,7 @@ class SocialManager {
   /**
    * Check if message is directed at Mishri
    */
-  _isDirectedAtUs(username, message) {
+  private _isDirectedAtUs(username: string, message: string): boolean {
     const lower = message.toLowerCase();
     const name = this.bot.username.toLowerCase();
     return (
@@ -68,16 +87,16 @@ class SocialManager {
     );
   }
 
-  _isNearby(username) {
+  private _isNearby(username: string): boolean {
     const player = this.bot.players[username];
     if (!player?.entity) return false;
-    return this.bot.entity.position.distanceTo(player.entity.position) < 16;
+    return this.bot.entity!.position.distanceTo(player.entity.position) < 16;
   }
 
   /**
    * Respond to directed message
    */
-  async _respondToDirected(username, message) {
+  private async _respondToDirected(username: string, message: string): Promise<void> {
     const lower = message.toLowerCase();
 
     // Greeting
@@ -89,10 +108,7 @@ class SocialManager {
 
     // How are you
     if (/how\s*(are|r)\s*(u|you)|how'?s?\s*it\s*going|what'?s?\s*up/i.test(lower)) {
-      const responses = [
-        'good wbu', 'not bad', 'chilling', 'tired ngl', 'im good hbu',
-        'surviving lol', 'could be worse', 'just vibing'
-      ];
+      const responses = ['good wbu', 'not bad', 'chilling', 'tired ngl', 'im good hbu', 'surviving lol', 'could be worse', 'just vibing'];
       await this._sendChat(this.h.pick(responses));
       return;
     }
@@ -106,10 +122,7 @@ class SocialManager {
 
     // What are you doing
     if (/what\s*(are|r)\s*(u|you)\s*doing|wyd|what'?s?\s*up/i.test(lower)) {
-      const doing = [
-        'just mining', 'wandering around', 'building stuff', 'not much tbh',
-        'looking for diamonds', 'exploring', 'chilling at base', 'grinding'
-      ];
+      const doing = ['just mining', 'wandering around', 'building stuff', 'not much tbh', 'looking for diamonds', 'exploring', 'chilling at base', 'grinding'];
       await this._sendChat(this.h.pick(doing));
       return;
     }
@@ -135,7 +148,7 @@ class SocialManager {
   /**
    * React to general (non-directed) chat
    */
-  async _reactToGeneral(username, message) {
+  private async _reactToGeneral(username: string, message: string): Promise<void> {
     const lower = message.toLowerCase();
 
     if (/\b(died|rip|dead|killed|lost\s*everything)\b/i.test(lower)) {
@@ -166,21 +179,21 @@ class SocialManager {
   /**
    * Answer a question
    */
-  async _answerQuestion(username, message) {
+  private async _answerQuestion(username: string, message: string): Promise<void> {
     if (this.llmConfig.enabled) {
       try {
         const response = await this._queryLLM(username, message);
         await this._sendChat(response);
         return;
       } catch (err) {
-        console.log(`[Social] LLM failed: ${err.message}`);
+        console.log(`[Social] LLM failed: ${(err as Error).message}`);
       }
     }
 
     const vague = [
       'idk', 'not sure tbh', 'maybe?', 'hmm', 'good question',
       'no idea lol', 'probably', 'i think so', 'maybe not?',
-      'who knows', 'wouldnt bet on it', 'yea probably'
+      'who knows', 'wouldnt bet on it', 'yea probably',
     ];
     await this._sendChat(this.h.pick(vague));
   }
@@ -188,8 +201,11 @@ class SocialManager {
   /**
    * Query LLM
    */
-  async _queryLLM(username, message) {
-    const fetch = (await import('node-fetch')).default;
+  private async _queryLLM(username: string, message: string): Promise<string> {
+    // node-fetch is a real, pre-existing (not newly introduced by this TS conversion) runtime
+    // dependency that isn't declared in package.json -- same real gap as SkinManager's own
+    // MineSkin call, preserved as-is here.
+    const fetch = (await import('node-fetch' as any)).default;
     const context = this.conversationalMemory.get(username)?.slice(-5) || [];
 
     const response = await fetch(`${this.llmConfig.baseUrl}/api/generate`, {
@@ -203,17 +219,17 @@ class SocialManager {
       }),
     });
 
-    const data = await response.json();
+    const data: any = await response.json();
     return data.response?.trim().substring(0, 100) || 'idk';
   }
 
   /**
    * Send chat with typo + possible correction
    */
-  async _sendChat(text) {
+  private async _sendChat(text: string): Promise<void> {
     await this.h.throttleAPM();
 
-    let finalText = this.h.maybeTypo(text);
+    const finalText = this.h.maybeTypo(text);
 
     // Typo + correction pattern (like real players)
     if (finalText !== text && Math.random() < (this.h.config.typoCorrectChance || 0.6)) {
@@ -230,7 +246,7 @@ class SocialManager {
   /**
    * Maybe greet when joining
    */
-  maybeGreet() {
+  maybeGreet(): void {
     if (Math.random() < 0.6) {
       const greeting = this.h.pick(this.personality.greetings);
       this.bot.chat(greeting);
@@ -238,4 +254,4 @@ class SocialManager {
   }
 }
 
-module.exports = SocialManager;
+export = SocialManager;

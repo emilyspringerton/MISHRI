@@ -14,16 +14,22 @@ risk.**
 
 ## Build
 
+The whole codebase is TypeScript (`src/`, `tests/`), compiled via `tsc` into `dist/`.
+
 ```bash
-bazel test //:test      # real, hermetic unit tests (humanness layer + skin manager)
 bazel run //:install     # npm ci — installs the real bot's own dependencies
-bazel run //:mishri      # npm start — runs the real bot
+bazel run //:build       # npm run build — compiles src/ + tests/ to dist/ via tsc
+bazel test //:test       # real, hermetic unit tests (humanness layer + skin manager)
+bazel run //:mishri      # npm start — builds, then runs the real bot
 ```
 
-`bazel test //:test` needs nothing beyond plain Node.js — the humanness/skin-manager logic it
-covers has no external dependencies. `bazel run //:install`/`//:mishri` are convenience wrappers
-around the real `npm` workflow (real network access, real `node_modules`, a real live server
-connection), not hermetic Bazel actions — see `BUILD.bazel`'s own doc comments for why.
+Recommended order for a fresh checkout: `install` → `build` → `test`. `bazel test //:test` runs
+the already-compiled `dist/tests/humanness.test.js` (Bazel's own sandbox has no network or
+`typescript` package to run `tsc` itself, so `dist/` must exist first — a real, honestly-documented
+non-hermetic prerequisite for an otherwise hermetic test). `bazel run //:install`/`//:build`/
+`//:mishri` are convenience wrappers around the real `npm ci`/`npm run build`/`npm start` workflow
+(real network access, real `node_modules`, a real `tsc` compile, a real live server connection),
+not hermetic Bazel actions — see `BUILD.bazel`'s own doc comments for why.
 
 ## Features
 
@@ -177,28 +183,35 @@ Mishri isn't stateless — it has **internal moods and drives** that make behavi
 ```
 Mishri/
 ├── .github/workflows/
-│   └── test-bot.yml          # GitHub Actions test workflow
+│   ├── ci.yml                 # Bazel test + construct bundle + auto-release
+│   └── test-bot.yml           # GitHub Actions live-server test workflow
 ├── config/
-│   └── default.json          # All configuration
+│   └── default.json           # All configuration
 ├── src/
 │   ├── core/
-│   │   ├── MishriBot.js      # Main bot class
-│   │   └── SkinManager.js    # Custom skin injection
+│   │   ├── MishriBot.ts       # Main bot class
+│   │   └── SkinManager.ts     # Custom skin injection
 │   ├── movement/
-│   │   └── MovementManager.js
+│   │   └── MovementManager.ts
 │   ├── perception/
-│   │   └── PerceptionManager.js
+│   │   └── PerceptionManager.ts
 │   ├── social/
-│   │   └── SocialManager.js
+│   │   └── SocialManager.ts
 │   ├── behavior/
-│   │   └── BehaviorOrchestrator.js
+│   │   └── BehaviorOrchestrator.ts
 │   ├── humanness/
-│   │   └── HumannessLayer.js  # ❤️ The heart of deception
+│   │   └── HumannessLayer.ts  # ❤️ The heart of deception
 │   ├── skills/
-│   │   └── SkillManager.js
-│   └── index.js
+│   │   └── SkillManager.ts
+│   ├── types/
+│   │   ├── config.ts                     # Shared MishriConfig shape
+│   │   └── mineflayer-pathfinder.d.ts    # Ambient shim (no upstream types)
+│   └── index.ts
 ├── tests/
-│   └── humanness.test.js
+│   └── humanness.test.ts
+├── dist/                       # tsc output (gitignored, not committed)
+├── tsconfig.json
+├── BUILD.bazel / MODULE.bazel
 ├── package.json
 └── README.md
 ```

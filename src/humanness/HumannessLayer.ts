@@ -1,14 +1,42 @@
 /**
  * Humanness Layer — The heart of Mishri's deception
  * Every action passes through this to add human imperfection
- * 
+ *
  * Philosophy: "A human is not a noisy machine.
  *              A human is a creature that hesitates, breathes, forgets,
  *              gets distracted, and occasionally does things for no reason."
  */
 
+import { Bot } from 'mineflayer';
+import { HumannessConfig } from '../types/config';
+
+type Mood = 'neutral' | 'curious' | 'tired' | 'bored' | 'social' | 'focused' | 'startled' | 'nervous';
+
+export interface HumannessState {
+  mood: Mood;
+  energy: string;
+  curiosity: string;
+  socialEnergy: string;
+  boredom: string;
+  fatigue: string;
+  apm: number;
+}
+
 class HumannessLayer {
-  constructor(config = {}) {
+  config: HumannessConfig;
+  actionCount: number;
+  actionWindowStart: number;
+  maxAPM: number;
+
+  mood: Mood;
+  energy: number;
+  curiosity: number;
+  socialEnergy: number;
+  lastActionTime: number;
+  boredom: number;
+  fatigueAccum: number;
+
+  constructor(config: HumannessConfig = {} as HumannessConfig) {
     this.config = config;
     this.actionCount = 0;
     this.actionWindowStart = Date.now();
@@ -35,7 +63,7 @@ class HumannessLayer {
    * Random delay within range — THE core primitive
    * Affected by fatigue, mood, and energy level
    */
-  async delay(min = 200, max = 1200) {
+  async delay(min = 200, max = 1200): Promise<void> {
     // Fatigue makes everything slower
     const fatigueMult = 1 + this.fatigueAccum * 0.5;
     // Low energy = slower
@@ -55,7 +83,7 @@ class HumannessLayer {
    * Reaction delay — simulates human response time
    * Faster when alert, slower when tired or distracted
    */
-  async reactionDelay() {
+  async reactionDelay(): Promise<void> {
     const baseMin = this.config.reactionDelayMin || 200;
     const baseMax = this.config.reactionDelayMax || 1200;
 
@@ -73,7 +101,7 @@ class HumannessLayer {
   /**
    * Chat delay — humans think, then type, then send
    */
-  async chatDelay() {
+  async chatDelay(): Promise<void> {
     const baseMin = this.config.chatDelayMin || 2500;
     const baseMax = this.config.chatDelayMax || 10000;
 
@@ -86,7 +114,7 @@ class HumannessLayer {
   //  APM THROTTLE — Cap to human action rates
   // ═══════════════════════════════════════════
 
-  async throttleAPM() {
+  async throttleAPM(): Promise<void> {
     const now = Date.now();
     const elapsed = now - this.actionWindowStart;
 
@@ -112,7 +140,7 @@ class HumannessLayer {
   /**
    * Add gaussian noise (Box-Muller transform)
    */
-  addNoise(value, sigma = 0.05) {
+  addNoise(value: number, sigma = 0.05): number {
     const u1 = Math.random();
     const u2 = Math.random();
     const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
@@ -122,7 +150,7 @@ class HumannessLayer {
   /**
    * Imperfect aim — add noise scaled by energy and fatigue
    */
-  imperfectAim(yaw, pitch) {
+  imperfectAim(yaw: number, pitch: number): { yaw: number; pitch: number } {
     const baseFactor = 1 - (this.config.imperfectAim || 0.82);
     // More tired = less precise
     const fatigueBonus = this.fatigueAccum * 0.3;
@@ -131,7 +159,7 @@ class HumannessLayer {
     const factor = baseFactor + fatigueBonus + startledBonus;
 
     const noiseYaw = this.addNoise(yaw, factor * Math.PI);
-    const noisePitch = this.addNoise(pitch, factor * Math.PI / 4);
+    const noisePitch = this.addNoise(pitch, (factor * Math.PI) / 4);
     return { yaw: noiseYaw, pitch: noisePitch };
   }
 
@@ -143,7 +171,7 @@ class HumannessLayer {
    * Micro-stop — humans occasionally pause mid-walk
    * More likely when bored or tired
    */
-  async maybeMicroStop() {
+  async maybeMicroStop(): Promise<void> {
     const chance = this.config.microStopChance || 0.05;
     const boredBonus = this.boredom * 0.05;
     if (Math.random() < chance + boredBonus) {
@@ -155,7 +183,7 @@ class HumannessLayer {
    * Smooth Bezier interpolation for natural turning
    * Not linear — humans accelerate and decelerate their head turns
    */
-  bezierInterp(start, end, t) {
+  bezierInterp(start: number, end: number, t: number): number {
     const offset = (Math.random() - 0.5) * 0.4;
     const mid = (start + end) / 2 + offset;
     const u = 1 - t;
@@ -166,20 +194,17 @@ class HumannessLayer {
    * Smooth turning — like a human moving their head
    * Variable speed, slight overshoot, settle
    */
-  async smoothTurn(bot, targetYaw, targetPitch, steps = 8) {
-    const startYaw = bot.entity.yaw;
-    const startPitch = bot.entity.pitch;
+  async smoothTurn(bot: Bot, targetYaw: number, targetPitch: number, steps = 8): Promise<void> {
+    const startYaw = bot.entity!.yaw;
+    const startPitch = bot.entity!.pitch;
 
     // Turn speed varies with mood
-    const speedMult = this.mood === 'startled' ? 0.5 : 
-                      this.mood === 'tired' ? 2.0 : 1.0;
+    const speedMult = this.mood === 'startled' ? 0.5 : this.mood === 'tired' ? 2.0 : 1.0;
 
     for (let i = 1; i <= steps; i++) {
       // Ease-in-ease-out (accelerate then decelerate)
       const rawT = i / steps;
-      const t = rawT < 0.5 
-        ? 2 * rawT * rawT 
-        : 1 - Math.pow(-2 * rawT + 2, 2) / 2;
+      const t = rawT < 0.5 ? 2 * rawT * rawT : 1 - Math.pow(-2 * rawT + 2, 2) / 2;
 
       const yaw = this.bezierInterp(startYaw, targetYaw, t);
       const pitch = this.bezierInterp(startPitch, targetPitch, t);
@@ -204,14 +229,9 @@ class HumannessLayer {
   /**
    * Introduce a typo — swap, delete, duplicate, or adjacent key
    */
-  maybeTypo(text) {
+  maybeTypo(text: string): string {
     if (Math.random() > (this.config.typoChance || 0.15) || text.length < 3) {
       return text;
-    }
-
-    // Tired = more typos
-    if (this.energy < 0.4 && Math.random() < 0.3) {
-      // Extra typo chance when tired
     }
 
     const ops = ['swap', 'delete', 'duplicate', 'adjacent'];
@@ -228,13 +248,13 @@ class HumannessLayer {
         return text.slice(0, pos) + text.slice(pos + 1);
       case 'duplicate':
         return text.slice(0, pos) + text[pos] + text[pos] + text.slice(pos + 1);
-      case 'adjacent':
+      case 'adjacent': {
         // Simulate hitting a nearby key on QWERTY
-        const adjacent = {
-          'a': 'sq', 's': 'ad', 'd': 'sf', 'f': 'dg', 'g': 'fh',
-          'h': 'gj', 'j': 'hk', 'k': 'jl', 'e': 'wr', 'r': 'et',
-          't': 'ry', 'y': 'tu', 'u': 'yi', 'i': 'uo', 'o': 'ip',
-          'n': 'bm', 'm': 'n,', 'l': 'k;', 'w': 'eq',
+        const adjacent: Record<string, string> = {
+          a: 'sq', s: 'ad', d: 'sf', f: 'dg', g: 'fh',
+          h: 'gj', j: 'hk', k: 'jl', e: 'wr', r: 'et',
+          t: 'ry', y: 'tu', u: 'yi', i: 'uo', o: 'ip',
+          n: 'bm', m: 'n,', l: 'k;', w: 'eq',
         };
         const lower = text[pos].toLowerCase();
         if (adjacent[lower]) {
@@ -243,6 +263,7 @@ class HumannessLayer {
           return text.slice(0, pos) + replacement + text.slice(pos + 1);
         }
         break;
+      }
     }
     return text;
   }
@@ -254,7 +275,7 @@ class HumannessLayer {
   /**
    * Hotbar scroll — humans cycle through items aimlessly
    */
-  async maybeScrollHotbar(bot) {
+  async maybeScrollHotbar(bot: Bot): Promise<void> {
     if (Math.random() < (this.config.hotbarScrollChance || 0.08)) {
       const scrolls = this.randInt(1, 4);
       for (let i = 0; i < scrolls; i++) {
@@ -268,7 +289,7 @@ class HumannessLayer {
   /**
    * Sneak-peek — press shift briefly (looking over edge, etc.)
    */
-  async maybeSneakPeek(bot) {
+  async maybeSneakPeek(bot: Bot): Promise<void> {
     if (Math.random() < (this.config.sneakPeekChance || 0.04)) {
       bot.setControlState('sneak', true);
       await this.delay(500, 2000);
@@ -279,7 +300,7 @@ class HumannessLayer {
   /**
    * Fidget with held item — right-click then cancel
    */
-  async maybeFidgetItem(bot) {
+  async maybeFidgetItem(bot: Bot): Promise<void> {
     if (Math.random() < (this.config.fidgetWithItemChance || 0.06)) {
       bot.activateItem();
       await this.delay(200, 600);
@@ -290,7 +311,7 @@ class HumannessLayer {
   /**
    * Open inventory briefly then close (checking items)
    */
-  async maybeCheckInventory(bot) {
+  async maybeCheckInventory(bot: Bot): Promise<void> {
     if (Math.random() < (this.config.openCloseInventoryChance || 0.04)) {
       // Open and close creative inventory / regular inventory
       // This creates the arm swing animation
@@ -304,7 +325,7 @@ class HumannessLayer {
    * Double-take — look at something, look away, then look back
    * Extremely human behavior
    */
-  async maybeDoubleTake(bot, targetYaw, targetPitch) {
+  async maybeDoubleTake(bot: Bot, targetYaw: number, targetPitch: number): Promise<void> {
     if (Math.random() < (this.config.doubleTakeChance || 0.02)) {
       // First glance
       await this.smoothTurn(bot, targetYaw, targetPitch, 4);
@@ -322,12 +343,12 @@ class HumannessLayer {
    * Nervous look-around — scan surroundings quickly
    * Happens in dark areas, after damage, or when alone
    */
-  async nervousLookAround(bot) {
+  async nervousLookAround(bot: Bot): Promise<void> {
     if (Math.random() < (this.config.nervousLookAroundChance || 0.03)) {
       const turns = this.randInt(3, 6);
       for (let i = 0; i < turns; i++) {
         const randomYaw = Math.random() * Math.PI * 2;
-        const randomPitch = (Math.random() - 0.5) * Math.PI / 2;
+        const randomPitch = ((Math.random() - 0.5) * Math.PI) / 2;
         await this.smoothTurn(bot, randomYaw, randomPitch, 3);
         await this.delay(100, 400);
       }
@@ -337,7 +358,7 @@ class HumannessLayer {
   /**
    * Stare at a player — humans make eye contact
    */
-  shouldStareAtPlayer() {
+  shouldStareAtPlayer(): boolean {
     return Math.random() < (this.config.stareAtPlayerChance || 0.15);
   }
 
@@ -345,11 +366,11 @@ class HumannessLayer {
   //  AFK & SESSION SIMULATION
   // ═══════════════════════════════════════════
 
-  shouldAFK() {
+  shouldAFK(): boolean {
     return Math.random() < (this.config.afkChance || 0.06);
   }
 
-  async randomAFKDuration() {
+  async randomAFKDuration(): Promise<void> {
     const min = this.config.afkDurationMin || 15000;
     const max = this.config.afkDurationMax || 180000;
     const duration = min + Math.random() * (max - min);
@@ -360,10 +381,10 @@ class HumannessLayer {
   //  INTERNAL STATE — Mood, energy, boredom
   // ═══════════════════════════════════════════
 
-  _startMoodCycles() {
+  private _startMoodCycles(): void {
     // Mood shifts every 5-20 minutes
     setInterval(() => {
-      const moods = ['neutral', 'neutral', 'neutral', 'curious', 'tired', 'bored', 'social', 'focused'];
+      const moods: Mood[] = ['neutral', 'neutral', 'neutral', 'curious', 'tired', 'bored', 'social', 'focused'];
       this.mood = this.pick(moods);
       // Recover energy when in 'neutral' or 'focused' mood
       if (this.mood === 'neutral' || this.mood === 'focused') {
@@ -394,7 +415,7 @@ class HumannessLayer {
   /**
    * Reset boredom — call when something interesting happens
    */
-  onInterestingEvent() {
+  onInterestingEvent(): void {
     this.boredom = 0;
     if (this.mood === 'bored') this.mood = 'neutral';
   }
@@ -402,14 +423,14 @@ class HumannessLayer {
   /**
    * Drain social energy — call after social interaction
    */
-  onSocialInteraction() {
+  onSocialInteraction(): void {
     this.socialEnergy = Math.max(0, this.socialEnergy - 0.15);
   }
 
   /**
    * Get startled — call when taking damage
    */
-  getStartled() {
+  getStartled(): void {
     this.mood = 'startled';
     this.onInterestingEvent();
     // Recover from startle after a few seconds
@@ -422,22 +443,22 @@ class HumannessLayer {
   //  UTILITY
   // ═══════════════════════════════════════════
 
-  chance(probability = 0.5) {
+  chance(probability = 0.5): boolean {
     return Math.random() < probability;
   }
 
-  pick(arr) {
+  pick<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
-  randInt(min, max) {
+  randInt(min: number, max: number): number {
     return Math.floor(min + Math.random() * (max - min + 1));
   }
 
   /**
    * Get current internal state (for debugging)
    */
-  getState() {
+  getState(): HumannessState {
     return {
       mood: this.mood,
       energy: this.energy.toFixed(2),
@@ -450,4 +471,4 @@ class HumannessLayer {
   }
 }
 
-module.exports = HumannessLayer;
+export = HumannessLayer;

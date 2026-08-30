@@ -26,6 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Real, non-hermetic prerequisite for the real, hermetic :test action below -- see
+      # BUILD.bazel's own doc comment on :test for the full real reasoning (Bazel's own sandbox
+      # has no network/typescript to run `tsc` itself, so dist/ has to already exist).
+      - name: npm ci && npm run build
+        run: |
+          npm ci
+          npm run build
+
       - uses: bazel-contrib/setup-bazel@0.15.0
         with:
           bazelisk-cache: true
@@ -47,8 +60,10 @@ jobs:
       # Real, exact concatenation format PARENA's own ci.yml "Generate Construct Bundle" step
       # established (this workflow's own real example) -- every source file delimited by literal
       # "--- FILE START: <relpath> ---" / "--- FILE END: <relpath> ---" markers, one flat text
-      # file. File-type glob adapted for this repo's own real stack (JS/JSON/MD/YAML/sh/Bazel
-      # instead of PARENA's own C/.prn set).
+      # file. File-type glob adapted for this repo's own real stack (TS/JS/JSON/MD/YAML/sh/Bazel
+      # instead of PARENA's own C/.prn set) -- dist/ (real, gitignored `tsc` output) excluded
+      # alongside .git/node_modules/bazel-* since it's real, regeneratable build output, not
+      # source.
       - name: Generate Construct Bundle
         shell: bash
         run: |
@@ -75,10 +90,11 @@ jobs:
                 -path './.git' \
                 -o -path './node_modules' \
                 -o -path './bazel-*' \
+                -o -path './dist' \
               \) -prune -o \
               -type f \
               \( \
-                -name '*.js' -o -name '*.json' -o -name 'BUILD.bazel' -o \
+                -name '*.ts' -o -name '*.js' -o -name '*.json' -o -name 'BUILD.bazel' -o \
                 -name 'MODULE.bazel' -o -name '*.bazelrc' -o -name '.bazelversion' -o \
                 -name '*.md' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' \
               \) \

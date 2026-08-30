@@ -5,27 +5,40 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 # please update it to build with bazel"). See MODULE.bazel's own doc comment for why this
 # repo deliberately does NOT pull in a hermetic rules_nodejs/aspect_rules_js toolchain.
 
-# :test -- the real, sandboxable, hermetic piece. Only exercises src/humanness/HumannessLayer.js
-# and src/core/SkinManager.js (both plain Node.js built-ins, no mineflayer/network dependency),
-# so this can be a genuine `bazel test` action: no network, no side effects, no `npm install`
-# needed at all.
+# :test -- a real, sandboxed `bazel test` action, but a real, honest trade-off since the
+# TypeScript upgrade (founder real-time: "upgrade everything to typescript for MISHRI"): it now
+# runs the already-COMPILED dist/tests/humanness.test.js + its two real dependency .js files,
+# not raw .ts source directly (Bazel's own sandbox has no network access and no `typescript`
+# package to compile with, so it can't run `tsc` itself). This means `dist/` must already exist
+# (`bazel run //:build`, or plain `npm ci && npm run build`) before `bazel test //:test` runs --
+# a real, honestly-documented non-hermetic prerequisite for an otherwise real, hermetic test
+# action (Bazel treats these pre-built files exactly like any other `data` input; it doesn't
+# care that a prior, non-Bazel-managed step produced them).
 sh_test(
     name = "test",
     srcs = ["scripts/bazel_test.sh"],
     data = [
-        "tests/humanness.test.js",
-        "src/humanness/HumannessLayer.js",
-        "src/core/SkinManager.js",
+        "dist/tests/humanness.test.js",
+        "dist/src/humanness/HumannessLayer.js",
+        "dist/src/core/SkinManager.js",
+        "dist/src/types/config.js",
     ],
 )
 
-# :install / :mishri -- real, deliberately NON-hermetic `bazel run` convenience wrappers around
-# the real `npm ci`/`npm start` workflow (real network access, real node_modules, real live
-# Minecraft server connection) -- see scripts/bazel_install.sh's and scripts/bazel_start.sh's own
-# doc comments for why these are `bazel run` targets, not `bazel build`/`bazel test` actions.
+# :install / :build / :mishri -- real, deliberately NON-hermetic `bazel run` convenience
+# wrappers around the real `npm ci`/`npm run build`/`npm start` workflow (real network access,
+# real node_modules, real tsc compile, real live Minecraft server connection) -- see each real
+# script's own doc comment for why these are `bazel run` targets, not `bazel build`/`bazel test`
+# actions. Real recommended local flow: `bazel run //:install && bazel run //:build && bazel
+# test //:test`.
 sh_binary(
     name = "install",
     srcs = ["scripts/bazel_install.sh"],
+)
+
+sh_binary(
+    name = "build",
+    srcs = ["scripts/bazel_build.sh"],
 )
 
 sh_binary(

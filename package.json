@@ -2,10 +2,11 @@
   "name": "mishri",
   "version": "1.0.0",
   "description": "🤖 Mishri — Human-like Minecraft bot that behaves indistinguishably from a real player",
-  "main": "src/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
-    "start": "node src/core/MishriBot.js",
-    "test": "node tests/humanness.test.js"
+    "build": "tsc",
+    "start": "npm run build && node dist/src/core/MishriBot.js",
+    "test": "npm run build && node dist/tests/humanness.test.js"
   },
   "keywords": [
     "minecraft",
@@ -24,6 +25,11 @@
     "mineflayer-collectblock": "^1.6.0",
     "mineflayer-pathfinder": "^2.4.5",
     "mineflayer-pvp": "^1.3.2",
-    "mineflayer-tool": "^1.2.0"
+    "mineflayer-tool": "^1.2.0",
+    "vec3": "^0.1.10"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "typescript": "^7.0.2"
   }
 }

@@ -3,8 +3,33 @@
  * Utility-based scoring with randomness + actual functional behaviors
  */
 
+import { Bot } from 'mineflayer';
+import HumannessLayer = require('../humanness/HumannessLayer');
+import type MishriBot = require('../core/MishriBot');
+
+interface BehaviorHistoryEntry {
+  name: string;
+  time: number;
+}
+
+interface ScoredBehavior {
+  name: string;
+  score: number;
+  execute: () => Promise<void>;
+}
+
 class BehaviorOrchestrator {
-  constructor(bot, humanness, mishri) {
+  bot: Bot;
+  h: HumannessLayer;
+  mishri: MishriBot;
+  running: boolean;
+  currentBehavior: string | null;
+  behaviorInterval: ReturnType<typeof setTimeout> | null;
+  afkInterval: ReturnType<typeof setTimeout> | null;
+  lastBehaviorTime: number;
+  behaviorHistory: BehaviorHistoryEntry[]; // Track what we've been doing
+
+  constructor(bot: Bot, humanness: HumannessLayer, mishri: MishriBot) {
     this.bot = bot;
     this.h = humanness;
     this.mishri = mishri;
@@ -13,15 +38,15 @@ class BehaviorOrchestrator {
     this.behaviorInterval = null;
     this.afkInterval = null;
     this.lastBehaviorTime = 0;
-    this.behaviorHistory = []; // Track what we've been doing
+    this.behaviorHistory = [];
   }
 
-  start() {
+  start(): void {
     this.running = true;
     this._behaviorLoop();
   }
 
-  stop() {
+  stop(): void {
     this.running = false;
     if (this.behaviorInterval) clearTimeout(this.behaviorInterval);
     if (this.afkInterval) clearTimeout(this.afkInterval);
@@ -30,7 +55,7 @@ class BehaviorOrchestrator {
   /**
    * Main behavior decision loop
    */
-  async _behaviorLoop() {
+  private async _behaviorLoop(): Promise<void> {
     if (!this.running) return;
 
     try {
@@ -43,9 +68,8 @@ class BehaviorOrchestrator {
 
       await behavior.execute();
       this.currentBehavior = null;
-
     } catch (err) {
-      console.log(`[Behavior] Error: ${err.message}`);
+      console.log(`[Behavior] Error: ${(err as Error).message}`);
       await this.h.delay(2000, 5000);
     }
 
@@ -57,8 +81,8 @@ class BehaviorOrchestrator {
   /**
    * Utility AI — score behaviors and pick the best
    */
-  _decideBehavior() {
-    const behaviors = [
+  private _decideBehavior(): ScoredBehavior {
+    const behaviors: ScoredBehavior[] = [
       { name: 'wander', score: this._scoreWander(), execute: () => this._doWander() },
       { name: 'mine', score: this._scoreMine(), execute: () => this._doMine() },
       { name: 'chopTree', score: this._scoreChopTree(), execute: () => this._doChopTree() },
@@ -77,9 +101,9 @@ class BehaviorOrchestrator {
     });
 
     // Penalize doing the same thing repeatedly
-    const recentNames = this.behaviorHistory.slice(-3).map(b => b.name);
+    const recentNames = this.behaviorHistory.slice(-3).map((b) => b.name);
     behaviors.forEach((b) => {
-      const repeats = recentNames.filter(n => n === b.name).length;
+      const repeats = recentNames.filter((n) => n === b.name).length;
       b.score -= repeats * 0.15; // Less likely to repeat
     });
 
@@ -89,87 +113,84 @@ class BehaviorOrchestrator {
 
   // --- Scoring ---
 
-  _scoreWander() {
+  private _scoreWander(): number {
     return 0.4 + this.h.curiosity * 0.2;
   }
 
-  _scoreMine() {
-    const hasTool = this.bot.inventory.items().some(i => i.name.includes('pickaxe') || i.name.includes('_pickaxe'));
+  private _scoreMine(): number {
+    const hasTool = this.bot.inventory.items().some((i) => i.name.includes('pickaxe') || i.name.includes('_pickaxe'));
     return hasTool ? 0.5 + Math.random() * 0.3 : 0.15;
   }
 
-  _scoreChopTree() {
-    const hasAxe = this.bot.inventory.items().some(i => i.name.includes('axe') || i.name.includes('_axe'));
+  private _scoreChopTree(): number {
+    const hasAxe = this.bot.inventory.items().some((i) => i.name.includes('axe') || i.name.includes('_axe'));
     return hasAxe ? 0.4 + Math.random() * 0.2 : 0.2;
   }
 
-  _scoreEat() {
+  private _scoreEat(): number {
     // Urgent if hungry
     if (this.bot.food < 10) return 0.9;
     if (this.bot.food < 16) return 0.3;
     return 0.05;
   }
 
-  _scoreSocialize() {
+  private _scoreSocialize(): number {
     const nearby = this.mishri.perception?.getNearbyPlayerCount?.() || 0;
     const socialMult = this.h.socialEnergy;
     return nearby > 0 ? (0.5 + nearby * 0.1) * socialMult : 0.05;
   }
 
-  _scoreCraft() {
+  private _scoreCraft(): number {
     // After mining, often want to craft
-    const recentMine = this.behaviorHistory.slice(-5).some(b => b.name === 'mine' || b.name === 'chopTree');
+    const recentMine = this.behaviorHistory.slice(-5).some((b) => b.name === 'mine' || b.name === 'chopTree');
     return recentMine ? 0.4 : 0.15;
   }
 
-  _scoreExplore() {
+  private _scoreExplore(): number {
     return 0.3 + this.h.curiosity * 0.3;
   }
 
-  _scoreIdle() {
+  private _scoreIdle(): number {
     return this.h.boredom * 0.3 + 0.15;
   }
 
-  _scoreFidget() {
+  private _scoreFidget(): number {
     return 0.15 + Math.random() * 0.1;
   }
 
   // --- Executors ---
 
-  async _doWander() {
+  private async _doWander(): Promise<void> {
     if (!this.mishri.movement) return;
     await this.h.reactionDelay();
     await this.mishri.movement.wander(16 + Math.random() * 32);
   }
 
-  async _doMine() {
+  private async _doMine(): Promise<void> {
     if (!this.mishri.skills) return;
     await this.h.reactionDelay();
     await this.mishri.skills.mineRandom();
   }
 
-  async _doChopTree() {
+  private async _doChopTree(): Promise<void> {
     if (!this.mishri.skills) return;
     await this.h.reactionDelay();
     await this.mishri.skills.chopTree();
   }
 
-  async _doEat() {
+  private async _doEat(): Promise<void> {
     if (!this.mishri.skills) return;
     await this.mishri.skills.eatFood();
   }
 
-  async _doSocialize() {
+  private async _doSocialize(): Promise<void> {
     const players = Object.values(this.bot.entities)
-      .filter(e => e.type === 'player' && e !== this.bot.entity)
-      .sort((a, b) =>
-        this.bot.entity.position.distanceTo(a.position) -
-        this.bot.entity.position.distanceTo(b.position)
-      );
+      .filter((e) => e.type === 'player' && e !== this.bot.entity)
+      .sort((a, b) => this.bot.entity!.position.distanceTo(a.position) - this.bot.entity!.position.distanceTo(b.position));
 
     if (players.length > 0) {
       // Approach the nearest player
-      await this.mishri.movement.approachEntity(players[0], 4);
+      await this.mishri.movement!.approachEntity(players[0], 4);
 
       // Maybe say something
       if (Math.random() < 0.4) {
@@ -179,21 +200,21 @@ class BehaviorOrchestrator {
       this.h.onSocialInteraction();
     } else {
       // No one nearby, just wander toward spawn/players
-      await this.mishri.movement.wander(32);
+      await this.mishri.movement!.wander(32);
     }
   }
 
-  async _doCraft() {
+  private async _doCraft(): Promise<void> {
     if (!this.mishri.skills) return;
     await this.mishri.skills.craftBasic();
   }
 
-  async _doExplore() {
+  private async _doExplore(): Promise<void> {
     if (!this.mishri.movement) return;
     await this.mishri.movement.wander(48 + Math.random() * 64);
   }
 
-  async _doIdle() {
+  private async _doIdle(): Promise<void> {
     const duration = 3000 + Math.random() * 8000;
     await this.h.delay(duration);
 
@@ -206,20 +227,24 @@ class BehaviorOrchestrator {
     }
   }
 
-  async _doFidget() {
+  private async _doFidget(): Promise<void> {
     const fidgets = [
       () => this.bot.setQuickBarSlot(this.h.randInt(0, 8)),
       () => this.bot.activateItem(),
       () => this.bot.deactivateItem(),
     ];
     const fidget = this.h.pick(fidgets);
-    try { fidget(); } catch (e) {}
+    try {
+      fidget();
+    } catch (e) {
+      /* fidget failures are cosmetic, ignore */
+    }
     await this.h.delay(200, 800);
   }
 
   // --- AFK ---
 
-  startAFKSimulator() {
+  startAFKSimulator(): void {
     const checkAFK = async () => {
       if (this.h.shouldAFK() && !this.currentBehavior) {
         console.log('[Behavior] Going AFK...');
@@ -235,4 +260,4 @@ class BehaviorOrchestrator {
   }
 }
 
-module.exports = BehaviorOrchestrator;
+export = BehaviorOrchestrator;
