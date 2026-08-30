@@ -10,6 +10,11 @@
 import { Bot } from 'mineflayer';
 import { HumannessConfig } from '../types/config';
 import { bezierInterp as bezierInterpGenerated } from '../generated/bezier_interp';
+import {
+  chance as chanceGenerated,
+  randomInt as randomIntGenerated,
+  gaussianNoise as gaussianNoiseGenerated,
+} from '../generated/humanness';
 
 type Mood = 'neutral' | 'curious' | 'tired' | 'bored' | 'social' | 'focused' | 'startled' | 'nervous';
 
@@ -140,12 +145,16 @@ class HumannessLayer {
 
   /**
    * Add gaussian noise (Box-Muller transform)
+   *
+   * Real, second PARENA-compiled replacement in this codebase (founder real-time, 2026-08-30:
+   * "continue rewriting MISHRI using parena using parena mods"). Now lives in
+   * PARENA/stdlib/mishri/humanness.prn, compiled via the new v0 PARENA TypeScript emitter into
+   * src/generated/humanness.ts (committed) -- verified bit-for-bit identical against the
+   * original across many (value, sigma) cases with both Math.random() calls mocked
+   * deterministically before this swap.
    */
   addNoise(value: number, sigma = 0.05): number {
-    const u1 = Math.random();
-    const u2 = Math.random();
-    const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-    return value + z * sigma;
+    return gaussianNoiseGenerated(value, sigma);
   }
 
   /**
@@ -450,16 +459,24 @@ class HumannessLayer {
   //  UTILITY
   // ═══════════════════════════════════════════
 
+  /**
+   * Real, third PARENA-compiled replacement in this codebase (see addNoise's own doc comment
+   * above for the full real convention this follows).
+   */
   chance(probability = 0.5): boolean {
-    return Math.random() < probability;
+    return chanceGenerated(probability);
   }
 
   pick<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  /**
+   * Real, fourth PARENA-compiled replacement in this codebase (see addNoise's own doc comment
+   * above for the full real convention this follows).
+   */
   randInt(min: number, max: number): number {
-    return Math.floor(min + Math.random() * (max - min + 1));
+    return randomIntGenerated(min, max);
   }
 
   /**
